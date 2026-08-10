@@ -1,5 +1,7 @@
 import type { ReactNode } from "react";
 
+/* The shared round-label pill, used by both bracket layouts. */
+
 export type RoundTone = "winners" | "losers" | "grandFinal";
 
 const TONES: Record<RoundTone, { color: string; background: string }> = {
@@ -39,42 +41,6 @@ export function RoundLabelPill({
       }}
     >
       {children}
-    </div>
-  );
-}
-
-export function BracketRoundColumn({
-  label,
-  tone,
-  height,
-  centred = false,
-  children,
-}: {
-  label: string;
-  tone: RoundTone;
-  height?: number;
-  centred?: boolean;
-  children: ReactNode;
-}) {
-  return (
-    <div
-      style={{
-        minWidth: "200px",
-        flex: 1,
-        alignSelf: centred ? "center" : undefined,
-      }}
-    >
-      <RoundLabelPill tone={tone}>{label}</RoundLabelPill>
-      <div
-        style={{
-          display: "flex",
-          flexDirection: "column",
-          justifyContent: "space-evenly",
-          height: height ? `${height}px` : undefined,
-        }}
-      >
-        {children}
-      </div>
     </div>
   );
 }

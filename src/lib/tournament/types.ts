@@ -15,6 +15,21 @@ export type BracketTeam = {
  *             is not rendered */
 export type MatchStatus = "playable" | "pending" | "walkover" | "void";
 
+/** Where an as-yet-undecided slot's occupant will come from. Structural:
+ *  present whenever the feeding match is rendered, regardless of decisions. */
+export type SlotSource = {
+  /** Key of the feeding match, e.g. "w-0-2". */
+  key: string;
+  /** Which of that match's two teams arrives here. */
+  outcome: "winner" | "loser";
+  /** The feeding match's playNumber. */
+  number: number;
+  /** Shown in an empty slot: "L3" / "W12". */
+  label: string;
+  /** title / aria form: "Loser of match 3". */
+  description: string;
+};
+
 export type MatchVM = {
   key: string;
   a: BracketTeam | null;
@@ -28,12 +43,19 @@ export type MatchVM = {
   status: MatchStatus;
   court: number;
   courtLabel: string;
+  /** 1-based, sequential across the whole draw in play order. Stable for a given
+   *  team count + format: it depends only on which matches are rendered, never
+   *  on `decisions`, so the sheet never renumbers itself mid-tournament. */
+  playNumber: number;
+  /** Null when the slot has no rendered feeder (a first-round slot, a
+   *  cross-bracket drop whose feeder was void, …). */
+  aSource: SlotSource | null;
+  bSource: SlotSource | null;
 };
 
 export type RoundVM = {
   label: string;
   matches: MatchVM[];
-  height: number;
 };
 
 export type EliminationVM = {
