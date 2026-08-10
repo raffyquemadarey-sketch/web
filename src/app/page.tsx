@@ -1,69 +1,163 @@
-import Image from "next/image";
+import type { Metadata } from "next";
+
+import { ButtonLink } from "@/components/ui/button";
+
+export const metadata: Metadata = {
+  description:
+    "Sign up, get seeded, show up and smash. Browse club and open badminton tournaments and enter in a couple of minutes.",
+};
+
+const FEATURES = [
+  {
+    title: "Brackets for every level",
+    body: "Divisions by rating, not sign-up order.",
+  },
+  {
+    title: "Coaches and clubs welcome",
+    body: "Player, coach or club admin accounts.",
+  },
+  {
+    title: "Draws and results, live",
+    body: "Matches and results post the moment they're set.",
+  },
+];
 
 export default function Home() {
   return (
-    <div className="flex flex-col flex-1 items-center justify-center bg-zinc-50 font-sans dark:bg-black">
-      <main className="flex flex-1 w-full max-w-3xl flex-col items-center justify-between py-32 px-16 bg-white dark:bg-black sm:items-start">
-        <Image
-          className="dark:invert h-5 w-[100px]"
-          src="/next.svg"
-          alt="Next.js logo"
-          width={100}
-          height={20}
-          priority
-        />
-        <div className="flex flex-col items-center gap-6 text-center sm:items-start sm:text-left">
-          <h1 className="max-w-xs text-3xl font-semibold leading-10 tracking-tight text-black dark:text-zinc-50">
-            To get started, edit the{" "}
-            <code className="rounded bg-black/[.06] px-1.5 py-0.5 font-mono text-[0.9em] dark:bg-white/[.08]">
-              page.tsx
-            </code>{" "}
-            file.
-          </h1>
-          <p className="max-w-md text-lg leading-8 text-zinc-600 dark:text-zinc-400">
-            Looking for a starting point or more instructions? Head over to{" "}
-            <a
-              href="https://vercel.com/templates?framework=next.js&utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              className="font-medium text-zinc-950 dark:text-zinc-50"
-            >
-              Templates
-            </a>{" "}
-            or the{" "}
-            <a
-              href="https://nextjs.org/learn?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              className="font-medium text-zinc-950 dark:text-zinc-50"
-            >
-              Learning
-            </a>{" "}
-            center.
-          </p>
+    <div>
+      <section
+        style={{
+          maxWidth: "1200px",
+          margin: "0 auto",
+          padding:
+            "clamp(48px, 8vw, 96px) clamp(20px, 5vw, 72px) clamp(32px, 6vw, 64px)",
+        }}
+      >
+        <span
+          style={{
+            display: "block",
+            fontSize: "13px",
+            letterSpacing: "0.06em",
+            textTransform: "uppercase",
+            fontWeight: 600,
+            color: "var(--color-accent-700)",
+            marginBottom: "14px",
+          }}
+        >
+          Autumn Open · Sept 12–14
+        </span>
+        <h1
+          style={{
+            fontSize: "clamp(40px, 5.8vw, 68px)",
+            lineHeight: 1.08,
+            margin: 0,
+            letterSpacing: "-0.01em",
+          }}
+        >
+          <span style={{ display: "block" }}>Sign up. Get seeded.</span>
+          <span style={{ display: "block" }}>Show up and smash.</span>
+        </h1>
+        <p
+          style={{
+            fontSize: "17px",
+            lineHeight: 1.65,
+            maxWidth: "58ch",
+            margin: "20px 0 0",
+            opacity: 0.85,
+          }}
+        >
+          Tournament entries for club and open events near you. Register once, play
+          all season.
+        </p>
+        <div
+          style={{
+            display: "flex",
+            gap: "var(--space-3)",
+            flexWrap: "wrap",
+            marginTop: "28px",
+          }}
+        >
+          <ButtonLink href="/tournaments" variant="primary" large>
+            Browse tournaments
+          </ButtonLink>
+          <ButtonLink href="/signin" variant="secondary" large>
+            I already have an account
+          </ButtonLink>
         </div>
-        <div className="flex flex-col gap-4 text-base font-medium sm:flex-row">
-          <a
-            className="flex h-12 w-full items-center justify-center gap-2 rounded-full bg-foreground px-5 text-background transition-colors hover:bg-[#383838] dark:hover:bg-[#ccc] md:w-[158px]"
-            href="https://vercel.com/new?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
+      </section>
+
+      <section
+        style={{
+          maxWidth: "1200px",
+          margin: "0 auto",
+          padding: "0 clamp(20px, 5vw, 72px) clamp(28px, 5vw, 40px)",
+        }}
+      >
+        <div
+          style={{
+            background: "var(--color-accent-2-100)",
+            borderRadius: "calc(var(--radius-lg) * 1.6)",
+            padding: "clamp(28px, 5vw, 48px) clamp(24px, 5vw, 56px)",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "space-between",
+            gap: "24px",
+            flexWrap: "wrap",
+          }}
+        >
+          <div>
+            <h2 style={{ fontSize: "24px", margin: "0 0 6px" }}>
+              Entries close a week before each event
+            </h2>
+            <p
+              style={{
+                fontSize: "14.5px",
+                lineHeight: 1.6,
+                opacity: 0.78,
+                margin: 0,
+                maxWidth: "48ch",
+              }}
+            >
+              One account, every tournament this season.
+            </p>
+          </div>
+          <ButtonLink
+            href="/tournaments"
+            variant="primary"
+            large
+            style={{ flex: "none" }}
           >
-            <Image
-              className="dark:invert h-[14px] w-4"
-              src="/vercel.svg"
-              alt="Vercel logomark"
-              width={16}
-              height={14}
-            />
-            Deploy Now
-          </a>
-          <a
-            className="flex h-12 w-full items-center justify-center rounded-full border border-solid border-black/[.08] px-5 transition-colors hover:border-transparent hover:bg-black/[.04] dark:border-white/[.145] dark:hover:bg-[#1a1a1a] md:w-[158px]"
-            href="https://nextjs.org/docs?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            Documentation
-          </a>
+            Browse tournaments
+          </ButtonLink>
         </div>
-      </main>
+      </section>
+
+      <section
+        style={{
+          maxWidth: "1200px",
+          margin: "0 auto",
+          padding: "20px clamp(20px, 5vw, 72px) clamp(56px, 8vw, 88px)",
+          display: "grid",
+          gridTemplateColumns: "repeat(auto-fit, minmax(240px, 1fr))",
+          gap: "28px",
+        }}
+      >
+        {FEATURES.map((feature) => (
+          <div key={feature.title}>
+            <h3 style={{ fontSize: "21px", margin: "0 0 8px" }}>{feature.title}</h3>
+            <p
+              style={{
+                fontSize: "14.5px",
+                lineHeight: 1.6,
+                opacity: 0.78,
+                margin: 0,
+              }}
+            >
+              {feature.body}
+            </p>
+          </div>
+        ))}
+      </section>
     </div>
   );
 }
