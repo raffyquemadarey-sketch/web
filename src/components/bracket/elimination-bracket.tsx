@@ -1,8 +1,9 @@
 import type { EliminationVM } from "@/lib/tournament/types";
 import type { MatchSide } from "@/lib/validation/enums";
 
-import { BracketRoundColumn } from "./bracket-round-column";
-import { MatchCard } from "./match-card";
+import { BracketSection } from "./bracket-section";
+import type { BracketSectionRound } from "./bracket-section";
+import styles from "./bracket.module.css";
 
 export function EliminationBracket({
   vm,
@@ -11,82 +12,52 @@ export function EliminationBracket({
   vm: EliminationVM;
   onPick?: (key: string, side: MatchSide) => void;
 }) {
+  // The grand final is the winners section's last column, which is where a
+  // printed sheet puts the championship and gives it a connector for free.
+  const winnersRounds: BracketSectionRound[] = [
+    ...vm.winnersRounds.map((round) => ({ round, tone: "winners" as const })),
+    ...(vm.grandFinal
+      ? [
+          {
+            round: {
+              label: vm.grandFinalLabel ?? "Grand final",
+              matches: [vm.grandFinal],
+            },
+            tone: "grandFinal" as const,
+            elevated: true,
+          },
+        ]
+      : []),
+  ];
+
   return (
     <div
       role="region"
       aria-label="Bracket"
       tabIndex={0}
-      style={{
-        display: "flex",
-        gap: "32px",
-        overflowX: "auto",
-        padding: "4px 4px 14px",
-      }}
+      className={styles.scroller}
     >
-      {vm.winnersRounds.map((round) => (
-        <BracketRoundColumn
-          key={round.label}
-          label={round.label}
-          tone="winners"
-          height={round.height}
-        >
-          {round.matches.map((match) => (
-            <MatchCard
-              key={match.key}
-              match={match}
-              onPick={onPick ? (side) => onPick(match.key, side) : undefined}
-            />
-          ))}
-        </BracketRoundColumn>
-      ))}
+      <div className={styles.sections}>
+        <BracketSection
+          title={vm.hasLosers ? "Winner's Bracket" : undefined}
+          titleId="bracket-winners-title"
+          rounds={winnersRounds}
+          onPick={onPick}
+        />
 
-      {vm.hasLosers ? (
-        <>
-          <div
-            aria-hidden="true"
-            style={{
-              width: "1px",
-              background: "var(--color-neutral-200)",
-              flex: "none",
-              margin: "40px 0",
-            }}
+        {vm.hasLosers ? (
+          <BracketSection
+            title="Loser's Bracket"
+            titleId="bracket-losers-title"
+            variant="losers"
+            rounds={vm.losersRounds.map((round) => ({
+              round,
+              tone: "losers" as const,
+            }))}
+            onPick={onPick}
           />
-          {vm.losersRounds.map((round) => (
-            <BracketRoundColumn
-              key={round.label}
-              label={round.label}
-              tone="losers"
-              height={round.height}
-            >
-              {round.matches.map((match) => (
-                <MatchCard
-                  key={match.key}
-                  match={match}
-                  onPick={onPick ? (side) => onPick(match.key, side) : undefined}
-                />
-              ))}
-            </BracketRoundColumn>
-          ))}
-        </>
-      ) : null}
-
-      {vm.grandFinal ? (
-        <BracketRoundColumn
-          label={vm.grandFinalLabel ?? "Grand final"}
-          tone="grandFinal"
-          centred
-        >
-          <MatchCard
-            match={vm.grandFinal}
-            elevated
-            onPick={
-              onPick
-                ? (side) => onPick(vm.grandFinal ? vm.grandFinal.key : "gf", side)
-                : undefined
-            }
-          />
-        </BracketRoundColumn>
-      ) : null}
+        ) : null}
+      </div>
     </div>
   );
 }

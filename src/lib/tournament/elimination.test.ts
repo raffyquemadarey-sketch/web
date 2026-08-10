@@ -46,6 +46,11 @@ function renderedMatches(vm: EliminationVM): MatchVM[] {
   return matches;
 }
 
+/** Every rendered match, addressable by the key the engine gives it. */
+function byKey(vm: EliminationVM): Map<string, MatchVM> {
+  return new Map(renderedMatches(vm).map((m) => [m.key, m]));
+}
+
 /** Clicks through a whole draw the way a user would: repeatedly decide the first
  *  pickable-but-undecided match in VM order until nothing is pickable. */
 function playOut(
@@ -148,7 +153,6 @@ describe("buildEliminationVM — single elimination", () => {
     expect(vm.winnersRounds[0].matches.every((m) => !m.a?.isBye && !m.b?.isBye)).toBe(
       true,
     );
-    expect(vm.winnersRounds.every((r) => r.height === 4 * 112)).toBe(true);
   });
 
   it("pads 5 teams to 8 with byes in the last round-0 matches", () => {
@@ -444,11 +448,6 @@ describe("buildEliminationVM — powers of two are unchanged", () => {
         }
       }
       expect(picks).toBe(EXPECTED_PICKS[teamCount]);
-
-      const wbHeight = fresh.winnersRounds[0].matches.length * 112;
-      const lbHeight = fresh.losersRounds[0].matches.length * 112;
-      expect(fresh.winnersRounds.every((r) => r.height === wbHeight)).toBe(true);
-      expect(fresh.losersRounds.every((r) => r.height === lbHeight)).toBe(true);
     });
   }
 });
@@ -473,5 +472,114 @@ describe("buildEliminationVM — courts with walkovers present", () => {
         expect(m.court, m.key).toBe(next?.court);
       });
     });
+  }
+});
+
+describe("buildEliminationVM — match numbering", () => {
+  it("numbers 8 teams (double) the way the printed sheet does", () => {
+    const matches = byKey(buildEliminationVM(makeTournament(8, "double")));
+    const numberOf = (key: string) => matches.get(key)?.playNumber;
+
+    expect(["w-0-0", "w-0-1", "w-0-2", "w-0-3"].map(numberOf)).toEqual([1, 2, 3, 4]);
+    expect(["l-0-0", "l-0-1"].map(numberOf)).toEqual([5, 6]);
+    expect(["w-1-0", "w-1-1"].map(numberOf)).toEqual([7, 8]);
+    expect(["l-1-0", "l-1-1"].map(numberOf)).toEqual([9, 10]);
+    expect(numberOf("w-2-0")).toBe(11);
+    expect(numberOf("l-2-0")).toBe(12);
+    expect(numberOf("l-3-0")).toBe(13);
+    expect(numberOf("gf")).toBe(14);
+  });
+
+  it("numbers 8 teams (single) 1..7 in round order", () => {
+    const vm = buildEliminationVM(makeTournament(8, "single"));
+    expect(vm.winnersRounds.map((r) => r.matches.map((m) => m.playNumber))).toEqual([
+      [1, 2, 3, 4],
+      [5, 6],
+      [7],
+    ]);
+  });
+
+  for (const teamCount of TEAM_COUNTS) {
+    for (const format of ["single", "double"] as const) {
+      it(`numbers every rendered match once, 1..N (${teamCount} teams, ${format})`, () => {
+        const rendered = renderedMatches(
+          buildEliminationVM(makeTournament(teamCount, format)),
+        );
+        const numbers = rendered.map((m) => m.playNumber).sort((a, b) => a - b);
+
+        expect(numbers).toEqual(
+          Array.from({ length: rendered.length }, (_, i) => i + 1),
+        );
+      });
+
+      it(`keeps match numbers stable as results come in (${teamCount} teams, ${format})`, () => {
+        const numbersOf = (vm: EliminationVM) =>
+          Object.fromEntries(renderedMatches(vm).map((m) => [m.key, m.playNumber]));
+        const fresh = buildEliminationVM(makeTournament(teamCount, format));
+        const { vm: played } = playOut(teamCount, format, () => "a");
+
+        expect(numbersOf(played)).toEqual(numbersOf(fresh));
+      });
+    }
+  }
+});
+
+describe("buildEliminationVM — slot sources", () => {
+  const labelsOf = (matches: Map<string, MatchVM>, key: string) => {
+    const match = matches.get(key);
+    return [match?.aSource?.label ?? null, match?.bSource?.label ?? null];
+  };
+
+  it("points every fed slot of an 8-team double elimination at its feeder", () => {
+    const matches = byKey(buildEliminationVM(makeTournament(8, "double")));
+    const labels = (key: string) => labelsOf(matches, key);
+
+    expect(labels("w-1-0")).toEqual(["W1", "W2"]);
+    expect(labels("w-1-1")).toEqual(["W3", "W4"]);
+    expect(labels("w-2-0")).toEqual(["W7", "W8"]);
+    expect(labels("l-0-0")).toEqual(["L1", "L2"]);
+    expect(labels("l-0-1")).toEqual(["L3", "L4"]);
+    expect(labels("l-1-0")).toEqual(["W5", "L7"]);
+    expect(labels("l-1-1")).toEqual(["W6", "L8"]);
+    expect(labels("l-2-0")).toEqual(["W9", "W10"]);
+    expect(labels("l-3-0")).toEqual(["W12", "L11"]);
+    expect(labels("gf")).toEqual(["W11", "W13"]);
+    expect(matches.get("l-3-0")?.bSource?.description).toBe("Loser of match 11");
+  });
+
+  it("leaves a slot sourceless when its feeder is void (6 teams)", () => {
+    const matches = byKey(buildEliminationVM(makeTournament(6, "double")));
+
+    expect(labelsOf(matches, "l-0-0")).toEqual(["L1", "L2"]);
+    // `l-0-1` is void, so it is never rendered and never numbered — the slot it
+    // would have fed shows nothing at all.
+    expect(matches.get("l-1-1")?.aSource).toBeNull();
+    expect(matches.get("l-1-1")?.bSource?.label).toBe("L7");
+  });
+
+  for (const teamCount of TEAM_COUNTS) {
+    for (const format of ["single", "double"] as const) {
+      it(`only ever points at rendered matches (${teamCount} teams, ${format})`, () => {
+        const vm = buildEliminationVM(makeTournament(teamCount, format));
+        const matches = byKey(vm);
+
+        for (const match of renderedMatches(vm)) {
+          for (const source of [match.aSource, match.bSource]) {
+            if (!source) continue;
+            const feeder = matches.get(source.key);
+            expect(feeder, `${match.key} <- ${source.key}`).toBeDefined();
+            expect(source.number, `${match.key} <- ${source.key}`).toBe(
+              feeder?.playNumber,
+            );
+          }
+        }
+
+        expect(
+          vm.winnersRounds[0].matches.every(
+            (m) => m.aSource === null && m.bSource === null,
+          ),
+        ).toBe(true);
+      });
+    }
   }
 });

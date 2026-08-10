@@ -1,0 +1,101 @@
+/* A classic printable tournament tree: the winners bracket on top, the losers
+   bracket below it, each running left to right at every width. Rounds are grid
+   columns, leaf matches are grid rows, and the elbows between matches are
+   pseudo-elements sized in percentages of their cell — which is exact, because
+   every row is the same fixed height. Nothing here measures the DOM. */
+
+.scroller {
+  --bracket-col: 200px;
+  --bracket-gap: 36px;
+  --bracket-row: 160px;
+  --match-header-h: 26px;
+  --match-side-h: 58px;
+  /* Header + two team rows + the 1px divider between them. */
+  --match-card-h: 143px;
+  --bracket-line: color-mix(in srgb, var(--color-text) 30%, transparent);
+
+  overflow-x: auto;
+  max-width: 100%;
+  padding: 4px 4px 14px;
+}
+
+.sections {
+  display: flex;
+  flex-direction: column;
+  gap: 28px;
+  /* Sized by the widest grid, but never narrower than the scroller, so a small
+     bracket still fills the region instead of hugging the left edge. */
+  width: max-content;
+  min-width: 100%;
+}
+
+.sectionTitle {
+  font-family: var(--font-heading);
+  font-size: 20px;
+  line-height: 1.12;
+  margin: 0 0 14px;
+}
+
+.losersSection {
+  border-top: 1px solid var(--color-divider);
+  padding-top: 24px;
+}
+
+/* `grid-template-columns` / `grid-template-rows` come inline: only the
+   component knows how many rounds and leaf rows the draw needs. */
+.grid {
+  display: grid;
+  column-gap: var(--bracket-gap);
+  width: max-content;
+}
+
+.cell {
+  position: relative;
+}
+
+.card {
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: var(--card-centre, 50%);
+  transform: translateY(-50%);
+}
+
+/* The horizontal stub entering a card from the left. */
+.cellIncoming::before {
+  content: "";
+  position: absolute;
+  top: var(--card-centre, 50%);
+  left: calc(var(--bracket-gap) / -2);
+  width: calc(var(--bracket-gap) / 2);
+  border-top: 1px solid var(--bracket-line);
+}
+
+/* The vertical riser joining two feeders. Omitted when they line up, which is
+   what makes a drop round a single straight line. */
+.cellRiser::after {
+  content: "";
+  position: absolute;
+  left: calc(var(--bracket-gap) / -2);
+  top: var(--riser-top, 25%);
+  height: var(--riser-height, 50%);
+  border-left: 1px solid var(--bracket-line);
+}
+
+/* The stub leaving a card to the right, hung off the card so it always meets
+   the card's own centre line. */
+.cellOutgoing .card::after {
+  content: "";
+  position: absolute;
+  top: 50%;
+  right: calc(var(--bracket-gap) / -2);
+  width: calc(var(--bracket-gap) / 2);
+  border-top: 1px solid var(--bracket-line);
+}
+
+@media (max-width: 48rem) {
+  .scroller {
+    --bracket-col: 168px;
+    --bracket-gap: 24px;
+  }
+}
