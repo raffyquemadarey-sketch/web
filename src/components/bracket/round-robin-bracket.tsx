@@ -87,8 +87,9 @@ export function RoundRobinBracket({
                   key={match.key}
                   style={{
                     background: "var(--color-surface)",
+                    border: "1px solid var(--color-divider)",
                     borderRadius: "var(--radius-md)",
-                    boxShadow: "var(--shadow-sm)",
+                    boxShadow: "var(--shadow-md)",
                     overflow: "hidden",
                     display: "flex",
                     alignItems: "center",

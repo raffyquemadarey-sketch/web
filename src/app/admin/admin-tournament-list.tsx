@@ -4,6 +4,7 @@ import { ButtonLink } from "@/components/ui/button";
 import { Card, CardKicker, CardTitle } from "@/components/ui/card";
 import { Tag } from "@/components/ui/tag";
 import { useDemoTournaments } from "@/lib/demo/demo-data-provider";
+import { formatTournamentDates } from "@/lib/tournament/dates";
 import { formatLabel } from "@/lib/tournament/labels";
 
 export function AdminTournamentList() {
@@ -19,7 +20,9 @@ export function AdminTournamentList() {
     >
       {tournaments.map((tournament) => (
         <Card key={tournament.id} style={{ padding: "22px" }}>
-          <CardKicker>{tournament.dates}</CardKicker>
+          <CardKicker>
+            {formatTournamentDates(tournament.startDate, tournament.endDate)}
+          </CardKicker>
           <CardTitle style={{ fontSize: "19px", margin: "4px 0 10px" }}>
             {tournament.name}
           </CardTitle>

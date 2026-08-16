@@ -94,7 +94,12 @@ export function getRosterFit(input: {
   };
 }
 
-export function describeRosterFit(fit: RosterFit): string {
+/** `verb` exists because "3 have registered" is a lie on Quick Play, where the
+ *  roster is typed in by hand and nobody registers for anything. */
+export function describeRosterFit(
+  fit: RosterFit,
+  verb: "registered" | "been added" = "registered",
+): string {
   const { playerCount, capacity } = fit.suggestion;
   // `getCapacity` is a two-value mapping, so the play type reads straight back
   // out of it — no need to carry the enum through every derived shape.
@@ -102,11 +107,11 @@ export function describeRosterFit(fit: RosterFit): string {
 
   switch (fit.status) {
     case "empty":
-      return `No players have registered yet. ${fit.teamCount} ${playType} teams will need ${fit.slots} players.`;
+      return `No players have ${verb} yet. ${fit.teamCount} ${playType} teams will need ${fit.slots} players.`;
     case "balanced":
       return `${playerCount} players, ${playType} — exactly fills ${fit.teamCount} teams of ${capacity}.`;
     case "underfilled":
-      return `${fit.teamCount} teams of ${capacity} needs ${fit.slots} players. ${playerCount} have registered, so ${fit.emptySlots} slots will stay empty.`;
+      return `${fit.teamCount} teams of ${capacity} needs ${fit.slots} players. ${playerCount} have ${verb}, so ${fit.emptySlots} slots will stay empty.`;
     case "overfilled":
       return `${playerCount} players won't fit in ${fit.teamCount} ${playType} teams (${fit.slots} slots) — ${fit.unplacedPlayers} players have no place.`;
   }

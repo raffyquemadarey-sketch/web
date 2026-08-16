@@ -8,6 +8,7 @@ import { PageContainer } from "@/components/ui/page-container";
 import { PageHeader } from "@/components/ui/page-header";
 import { useDemoTournament } from "@/lib/demo/demo-data-provider";
 import { useDemoSession } from "@/lib/demo/demo-session-provider";
+import { formatTournamentDates } from "@/lib/tournament/dates";
 
 export function ConfirmEntry({ id }: { id: string }) {
   const tournament = useDemoTournament(id);
@@ -61,7 +62,8 @@ export function ConfirmEntry({ id }: { id: string }) {
         }}
       >
         <CalloutPanel size="sm" style={{ marginBottom: "20px", fontSize: "13.5px" }}>
-          Entering <strong>{tournament.name}</strong> · {tournament.dates}
+          Entering <strong>{tournament.name}</strong> ·{" "}
+          {formatTournamentDates(tournament.startDate, tournament.endDate)}
         </CalloutPanel>
         <ConfirmEntryForm tournamentId={id} playerName={session.profile.name} />
       </div>

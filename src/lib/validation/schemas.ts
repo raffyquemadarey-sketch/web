@@ -1,5 +1,6 @@
 import { z } from "zod";
 
+import { isoDateSchema, optionalIsoDateSchema } from "./dates";
 import {
   accountRoleSchema,
   courtCountSchema,
@@ -57,39 +58,49 @@ export const confirmEntrySchema = z.object({
   skill: z.enum(skillLevelSchema.options, "Choose your division."),
 });
 
-export const tournamentDraftSchema = z.object({
-  name: z
-    .string("Enter a tournament name.")
-    .trim()
-    .min(2, "Enter a tournament name.")
-    .max(80, "Keep this under 80 characters."),
-  dates: z
-    .string("Enter the dates.")
-    .trim()
-    .min(2, "Enter the dates.")
-    .max(40, "Keep this under 40 characters."),
-  location: z
-    .string("Enter a location.")
-    .trim()
-    .min(2, "Enter a location.")
-    .max(80, "Keep this under 80 characters."),
-  level: z
-    .string("Enter a level.")
-    .trim()
-    .min(2, "Enter a level.")
-    .max(40, "Keep this under 40 characters."),
-  description: z
-    .string("Enter a short description, or leave it blank.")
-    .trim()
-    .max(300, "Keep the description under 300 characters.")
-    .optional(),
-  format: tournamentFormatSchema,
-  teamCount: teamCountSchema,
-  courtCount: courtCountSchema,
-  playType: playTypeSchema,
-  matchMinutes: matchMinutesSchema,
-  sessionMinutes: sessionMinutesSchema,
-});
+export const tournamentDraftSchema = z
+  .object({
+    name: z
+      .string("Enter a tournament name.")
+      .trim()
+      .min(2, "Enter a tournament name.")
+      .max(80, "Keep this under 80 characters."),
+    startDate: isoDateSchema("Choose a start date."),
+    endDate: optionalIsoDateSchema("Choose an end date, or leave it blank."),
+    location: z
+      .string("Enter a location.")
+      .trim()
+      .min(2, "Enter a location.")
+      .max(80, "Keep this under 80 characters."),
+    level: z
+      .string("Enter a level.")
+      .trim()
+      .min(2, "Enter a level.")
+      .max(40, "Keep this under 40 characters."),
+    description: z
+      .string("Enter a short description, or leave it blank.")
+      .trim()
+      .max(300, "Keep the description under 300 characters.")
+      .optional(),
+    format: tournamentFormatSchema,
+    teamCount: teamCountSchema,
+    courtCount: courtCountSchema,
+    playType: playTypeSchema,
+    matchMinutes: matchMinutesSchema,
+    sessionMinutes: sessionMinutesSchema,
+  })
+  .superRefine((value, ctx) => {
+    if (!value.startDate || !value.endDate) return;
+    // Zero-padded ISO dates sort chronologically as plain strings, so ordering
+    // needs no `Date` — which would read them as UTC midnight anyway.
+    if (value.endDate < value.startDate) {
+      ctx.addIssue({
+        code: "custom",
+        path: ["endDate"],
+        message: "The end date cannot be before the start date.",
+      });
+    }
+  });
 
 export const teamNameSchema = z
   .string("Team names cannot be empty.")
@@ -97,8 +108,20 @@ export const teamNameSchema = z
   .min(1, "Team names cannot be empty.")
   .max(40, "Keep team names under 40 characters.");
 
+/* Quick Play types players in by hand, so this is the whole entry form. The
+   roster is not visible from here, which is why duplicates are caught by the
+   form itself rather than by a refinement. */
+export const addPlayerSchema = z.object({
+  name: z
+    .string("Enter a player name.")
+    .trim()
+    .min(2, "Enter a player name.")
+    .max(40, "Keep names under 40 characters."),
+});
+
 export type RegistrationInput = z.infer<typeof registrationSchema>;
 export type SignInInput = z.infer<typeof signInSchema>;
 export type ConfirmEntryInput = z.infer<typeof confirmEntrySchema>;
 export type TournamentDraftInput = z.infer<typeof tournamentDraftSchema>;
 export type TeamNameInput = z.infer<typeof teamNameSchema>;
+export type AddPlayerInput = z.infer<typeof addPlayerSchema>;

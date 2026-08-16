@@ -1,11 +1,14 @@
 import Link from "next/link";
 import type { ReactNode } from "react";
 
+import { LocationPanel } from "@/components/tournament/location-panel";
 import { Tag } from "@/components/ui/tag";
+import { formatTournamentDates } from "@/lib/tournament/dates";
 
 export type TournamentDetailSummary = {
   name: string;
-  dates: string;
+  startDate: string;
+  endDate: string | null;
   location: string;
   level: string;
   divisions: string;
@@ -53,7 +56,8 @@ export function TournamentDetailHeader({
           marginBottom: "10px",
         }}
       >
-        {tournament.dates} · {tournament.location}
+        {formatTournamentDates(tournament.startDate, tournament.endDate)} ·{" "}
+        {tournament.location}
       </span>
       <h1 style={{ fontSize: "clamp(30px, 4vw, 42px)", margin: "0 0 14px" }}>
         {tournament.name}
@@ -81,6 +85,8 @@ export function TournamentDetailHeader({
         <Tag tone="accent">{tournament.level}</Tag>
         <Tag tone="accent-2">{tournament.divisions}</Tag>
       </div>
+
+      <LocationPanel location={tournament.location} />
 
       <div
         style={{

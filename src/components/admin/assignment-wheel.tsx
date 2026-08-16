@@ -39,7 +39,7 @@ export function AssignmentWheel({
   if (!vm.hasPlayers || targetSlot === -1) {
     return (
       <p style={{ fontSize: "13.5px", opacity: 0.6, margin: 0 }}>
-        Everyone registered is already on a team.
+        Everyone on the list is already on a team.
       </p>
     );
   }

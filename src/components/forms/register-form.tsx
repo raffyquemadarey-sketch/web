@@ -15,6 +15,7 @@ import { RadioGroup } from "@/components/ui/radio-group";
 import { SegmentedControl } from "@/components/ui/segmented-control";
 import { useDemoActions } from "@/lib/demo/demo-data-provider";
 import { useDemoSession } from "@/lib/demo/demo-session-provider";
+import { formatTournamentDates } from "@/lib/tournament/dates";
 import type { AccountRole, SkillLevel } from "@/lib/validation/enums";
 import { registrationSchema } from "@/lib/validation/schemas";
 import type { RegistrationInput } from "@/lib/validation/schemas";
@@ -31,7 +32,12 @@ const SKILL_OPTIONS: { value: SkillLevel; label: string }[] = [
   { value: "advanced", label: "Advanced" },
 ];
 
-export type EntryTournamentSummary = { id: string; name: string; dates: string };
+export type EntryTournamentSummary = {
+  id: string;
+  name: string;
+  startDate: string;
+  endDate: string | null;
+};
 
 export function RegisterForm({
   tournament,
@@ -97,7 +103,8 @@ export function RegisterForm({
           size="sm"
           style={{ marginBottom: "20px", fontSize: "13.5px" }}
         >
-          Entering <strong>{tournament.name}</strong> · {tournament.dates}
+          Entering <strong>{tournament.name}</strong> ·{" "}
+          {formatTournamentDates(tournament.startDate, tournament.endDate)}
         </CalloutPanel>
       ) : null}
 

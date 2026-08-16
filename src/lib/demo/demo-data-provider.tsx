@@ -16,6 +16,7 @@ import type {
   TournamentFormat,
 } from "@/lib/validation/enums";
 
+import { createQuickPlaySession } from "./quick-play";
 import { demoReducer } from "./reducer";
 import type { DemoState } from "./reducer";
 
@@ -33,10 +34,13 @@ type DemoActions = {
   assignPlayer: (id: string, name: string) => void;
   resetAssignments: (id: string) => void;
   addRosterEntry: (id: string, entry: RosterEntry) => void;
+  removeRosterEntry: (id: string, name: string) => void;
 };
 
 type DemoDataValue = {
   tournaments: Tournament[];
+  /** The Quick Play whiteboard, held apart from `tournaments` on purpose. */
+  quickPlay: Tournament;
   getTournament: (id: string) => Tournament | null;
   actions: DemoActions;
 };
@@ -52,10 +56,14 @@ export function DemoDataProvider({
 }) {
   const [state, dispatch] = useReducer(demoReducer, {
     tournaments: initialTournaments,
+    quickPlay: createQuickPlaySession(),
   } satisfies DemoState);
 
   const value: DemoDataValue = {
     tournaments: state.tournaments,
+    quickPlay: state.quickPlay,
+    // Searches `tournaments` only, so `QUICK_PLAY_ID` never resolves here — the
+    // whiteboard is reached through `useQuickPlay()` and nothing else.
     getTournament: (id) => state.tournaments.find((t) => t.id === id) ?? null,
     actions: {
       createTournament: (tournament) => dispatch({ type: "create", tournament }),
@@ -79,6 +87,8 @@ export function DemoDataProvider({
       resetAssignments: (id) => dispatch({ type: "resetAssignments", id }),
       addRosterEntry: (id, entry) =>
         dispatch({ type: "addRosterEntry", id, entry }),
+      removeRosterEntry: (id, name) =>
+        dispatch({ type: "removeRosterEntry", id, name }),
     },
   };
 
@@ -101,6 +111,10 @@ export function useDemoTournaments(): Tournament[] {
 
 export function useDemoTournament(id: string): Tournament | null {
   return useDemoData().getTournament(id);
+}
+
+export function useQuickPlay(): Tournament {
+  return useDemoData().quickPlay;
 }
 
 export function useDemoActions(): DemoActions {

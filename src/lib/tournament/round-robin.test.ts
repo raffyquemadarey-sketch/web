@@ -9,7 +9,8 @@ function makeTournament(teamCount: number, decisions: DecisionMap = {}): Tournam
   return {
     id: "test",
     name: "Test",
-    dates: "Jan 1",
+    startDate: "2026-01-01",
+    endDate: null,
     location: "Test hall",
     level: "All levels",
     divisions: "Singles",

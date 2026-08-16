@@ -52,8 +52,9 @@ function MatchSideRow({
 }) {
   const team = side === "a" ? match.a : match.b;
   const source = side === "a" ? match.aSource : match.bSource;
-  // A BYE slot keeps showing "Bye" — it is structurally empty, not waiting on
-  // anything. Only a genuinely undecided slot names where its team comes from.
+  // A slot is either a real team — including one that walked in on a bye, since
+  // the BYE sentinel never reaches a card — or null, in which case it names the
+  // match its occupant will come from.
   const pending = team === null ? source : null;
   const name = side === "a" ? match.aName : match.bName;
   const text = pending ? pending.label : name;
@@ -82,7 +83,17 @@ function MatchSideRow({
           ? `${pending.description}, not yet decided`
           : `Record ${name} as the winner on ${match.courtLabel}`
       }
-      style={{ ...style, border: "none", cursor: "pointer" }}
+      style={{
+        ...style,
+        /* A button arrives with the browser's own frame, which has to go — but
+           the `border` shorthand would also wipe the divider `sideStyle` hangs
+           on side b, so the edges are cleared one at a time. */
+        borderTop: style.borderTop ?? "none",
+        borderRight: "none",
+        borderBottom: "none",
+        borderLeft: "none",
+        cursor: "pointer",
+      }}
     >
       <span style={NAME_STYLE} title={hint}>
         {text}
@@ -105,8 +116,9 @@ export function MatchCard({
     <div
       style={{
         background: "var(--color-surface)",
+        border: "1px solid var(--color-divider)",
         borderRadius: "var(--radius-md)",
-        boxShadow: elevated ? "var(--shadow-md)" : "var(--shadow-sm)",
+        boxShadow: elevated ? "var(--shadow-lg)" : "var(--shadow-md)",
         overflow: "hidden",
         flexShrink: 0,
         height: "var(--match-card-h, 143px)",

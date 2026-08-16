@@ -20,11 +20,14 @@ export function RosterFitNotice({
   playerCount,
   playType,
   teamCount,
+  rosterVerb,
   onUseSuggestion,
 }: {
   playerCount: number;
   playType: PlayType;
   teamCount: number;
+  /** "been added" for a hand-typed roster; omitted, it reads "registered". */
+  rosterVerb?: "registered" | "been added";
   onUseSuggestion: (teamCount: number) => void;
 }) {
   const fit = getRosterFit({ playerCount, playType, teamCount });
@@ -51,7 +54,7 @@ export function RosterFitNotice({
         {/* One live region, rendered in every state: a status element that
             mounts alongside its message is frequently never announced. */}
         <p role="status" style={{ fontSize: "13.5px", margin: 0 }}>
-          {describeRosterFit(fit)}
+          {describeRosterFit(fit, rosterVerb)}
           {offerSuggestion ? ` ${suggestion}` : ""}
         </p>
       </div>

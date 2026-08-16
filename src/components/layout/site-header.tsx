@@ -43,6 +43,9 @@ export function SiteHeader() {
       <Link href="/tournaments" aria-current={currentFor(pathname, "/tournaments")}>
         Tournaments
       </Link>
+      <Link href="/quick-play" aria-current={currentFor(pathname, "/quick-play")}>
+        Quick Play
+      </Link>
       <Link href="/admin" aria-current={currentFor(pathname, "/admin")}>
         Admin
       </Link>

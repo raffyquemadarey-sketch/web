@@ -148,6 +148,23 @@ describe("describeRosterFit", () => {
       "16 players won't fit in 4 doubles teams (8 slots) — 8 players have no place.",
     );
   });
+
+  it("swaps the verb for a hand-typed roster", () => {
+    expect(
+      describeRosterFit(
+        getRosterFit({ playerCount: 0, playType: "doubles", teamCount: 4 }),
+        "been added",
+      ),
+    ).toBe("No players have been added yet. 4 doubles teams will need 8 players.");
+    expect(
+      describeRosterFit(
+        getRosterFit({ playerCount: 3, playType: "doubles", teamCount: 8 }),
+        "been added",
+      ),
+    ).toBe(
+      "8 teams of 2 needs 16 players. 3 have been added, so 13 slots will stay empty.",
+    );
+  });
 });
 
 describe("describeSuggestion", () => {

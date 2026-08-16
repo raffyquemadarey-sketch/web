@@ -15,6 +15,7 @@ import { PageHeader } from "@/components/ui/page-header";
 import { Tag } from "@/components/ui/tag";
 import { useDemoTournament } from "@/lib/demo/demo-data-provider";
 import { useDemoSession } from "@/lib/demo/demo-session-provider";
+import { formatTournamentDates } from "@/lib/tournament/dates";
 import { roleLabel, skillLabel } from "@/lib/tournament/labels";
 
 export function DashboardContent() {
@@ -84,7 +85,9 @@ export function DashboardContent() {
                   marginBottom: "14px",
                 }}
               >
-                <Tag tone="accent">{registered.dates}</Tag>
+                <Tag tone="accent">
+                  {formatTournamentDates(registered.startDate, registered.endDate)}
+                </Tag>
                 <Tag tone="accent-2">{divisionTag}</Tag>
                 <Tag tone="outline">Entry confirmed</Tag>
               </div>
