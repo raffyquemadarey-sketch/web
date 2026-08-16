@@ -11,6 +11,8 @@ import {
 } from "@/lib/validation/enums";
 import type { PlayType, TournamentFormat } from "@/lib/validation/enums";
 
+import styles from "./tournament-settings.module.css";
+
 export const FORMAT_OPTIONS: { value: TournamentFormat; label: string }[] = [
   { value: "single", label: "Single elim" },
   { value: "double", label: "Double elim" },
@@ -73,14 +75,7 @@ export function TournamentSettings({
 }) {
   return (
     <>
-      <div
-        style={{
-          display: "grid",
-          gridTemplateColumns: "repeat(auto-fit, minmax(240px, 1fr))",
-          gap: "24px",
-          marginBottom: "30px",
-        }}
-      >
+      <div className={styles.grid}>
         <Field>
           <SegmentedControl
             name={`${idPrefix}-format`}
