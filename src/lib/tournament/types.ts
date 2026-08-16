@@ -11,8 +11,12 @@ export type BracketTeam = {
  *  pending  — at least one slot waits on an undecided upstream match (renders TBD)
  *  walkover — exactly one real team, the other slot is structurally empty; the
  *             real team advances without playing (winners-bracket byes included)
- *  void     — both slots are structurally empty; the match is never played and
- *             is not rendered */
+ *  void     — both slots are structurally empty; the match is never played
+ *
+ *  `walkover` and `void` are both structural filler and neither is rendered: a
+ *  team that draws a bye just appears in its next-round slot, the way a printed
+ *  sheet shows it. Every match in a built VM satisfies
+ *  `status ∈ {playable, pending}`. */
 export type MatchStatus = "playable" | "pending" | "walkover" | "void";
 
 /** Where an as-yet-undecided slot's occupant will come from. Structural:
@@ -47,8 +51,11 @@ export type MatchVM = {
    *  team count + format: it depends only on which matches are rendered, never
    *  on `decisions`, so the sheet never renumbers itself mid-tournament. */
   playNumber: number;
-  /** Null when the slot has no rendered feeder (a first-round slot, a
-   *  cross-bracket drop whose feeder was void, …). */
+  /** The nearest *rendered* ancestor of this slot, which may be several hidden
+   *  byes upstream of the match that structurally feeds it. Null when the slot
+   *  has no rendered feeder: a first-round slot, a slot whose occupant is
+   *  already fixed (the team that drew the bye is sitting in it), or a chain
+   *  that dies in a void. */
   aSource: SlotSource | null;
   bSource: SlotSource | null;
 };

@@ -20,7 +20,8 @@ export default async function RegisterPage(props: PageProps<"/register">) {
           ? {
               id: tournament.id,
               name: tournament.name,
-              dates: tournament.dates,
+              startDate: tournament.startDate,
+              endDate: tournament.endDate,
             }
           : undefined
       }

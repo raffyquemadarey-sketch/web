@@ -13,6 +13,7 @@ import { PageContainer } from "@/components/ui/page-container";
 import { PageHeader } from "@/components/ui/page-header";
 import { useDemoActions, useDemoTournament } from "@/lib/demo/demo-data-provider";
 import { buildBracketVM } from "@/lib/tournament/bracket";
+import { formatTournamentDates } from "@/lib/tournament/dates";
 
 export function ManageTournament({ id }: { id: string }) {
   const tournament = useDemoTournament(id);
@@ -49,7 +50,8 @@ export function ManageTournament({ id }: { id: string }) {
         {tournament.name}
       </h1>
       <p style={{ fontSize: "14px", opacity: 0.7, margin: "0 0 26px" }}>
-        {tournament.dates} · {tournament.location}
+        {formatTournamentDates(tournament.startDate, tournament.endDate)} ·{" "}
+        {tournament.location}
       </p>
 
       <RosterList roster={tournament.roster} />

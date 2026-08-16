@@ -16,7 +16,8 @@ function makeTournament(
   return {
     id: "test",
     name: "Test",
-    dates: "Jan 1",
+    startDate: "2026-01-01",
+    endDate: null,
     location: "Test hall",
     level: "All levels",
     divisions: "Singles",
@@ -98,10 +99,12 @@ function playOutWinnersOnly(teamCount: number): EliminationVM {
 
 /** Raw (pre-filter) losers-round sizes implied by the winners bracket: the drop
  *  round for winners round i takes mc0 / 2^i slots and each consolation round
- *  halves that again. Void matches are the gap between this and what is
- *  rendered, which is the only way to observe them from outside the engine. */
-function rawLosersCounts(vm: EliminationVM): number[] {
-  const mc0 = vm.winnersRounds[0].matches.length;
+ *  halves that again. `mc0` comes from the team count rather than the VM because
+ *  the VM's first winners round is filtered. Hidden byes are the gap between
+ *  this and what is rendered, which is the only way to observe them from
+ *  outside the engine. */
+function rawLosersCounts(teamCount: number, vm: EliminationVM): number[] {
+  const mc0 = 2 ** Math.ceil(Math.log2(teamCount)) / 2;
   const k = vm.winnersRounds.length;
   const counts = [mc0 / 2];
   for (let i = 1; i < k; i++) {
@@ -155,18 +158,23 @@ describe("buildEliminationVM — single elimination", () => {
     );
   });
 
-  it("pads 5 teams to 8 with byes in the last round-0 matches", () => {
+  it("pads 5 teams to 8 without showing a card for any bye", () => {
     const vm = buildEliminationVM(makeTournament(5, "single"));
     const round0 = vm.winnersRounds[0].matches;
 
-    expect(round0).toHaveLength(4);
+    // Teams 1 and 2 play the only real opening match; teams 3, 4 and 5 draw byes
+    // and get no card of their own.
+    expect(round0).toHaveLength(1);
+    expect(round0[0].key).toBe("w-0-0");
     expect(round0[0].canPick).toBe(true);
-    expect(round0.slice(1).every((m) => m.canPick === false)).toBe(true);
-    expect(round0.slice(1).every((m) => m.b?.isBye === true)).toBe(true);
-    // Teams 1 and 2 play the only real match, so Team 3 takes the first bye and
-    // auto-advances.
-    expect(round0[1].winner).toBe("a");
-    expect(round0[1].winnerTeam?.name).toBe("Team 3");
+    expect(vm.winnersRounds[0].label).toBe("Round 1 · Quarterfinals");
+
+    // The bye teams are visible where they landed instead.
+    expect(vm.winnersRounds[1].matches[0].bName).toBe("Team 3");
+    expect(vm.winnersRounds[1].matches[1].key).toBe("w-1-1");
+    expect(vm.winnersRounds[1].matches[1].status).toBe("playable");
+    expect(vm.winnersRounds[1].matches[1].aName).toBe("Team 4");
+    expect(vm.winnersRounds[1].matches[1].bName).toBe("Team 5");
   });
 
   it("cycles courts across pickable matches only", () => {
@@ -191,10 +199,9 @@ describe("buildEliminationVM — single elimination", () => {
     expect(decided.winnersRounds[1].matches.map((m) => m.court)).toEqual([1, 2]);
 
     const withByes = buildEliminationVM(makeTournament(5, "single", {}, 4));
-    // Only the single real round-0 match consumes a court.
-    expect(withByes.winnersRounds[0].matches.map((m) => m.court)).toEqual([
-      1, 2, 2, 2,
-    ]);
+    // Only the single real round-0 match survives the bye filter, and it takes
+    // the first court.
+    expect(withByes.winnersRounds[0].matches.map((m) => m.court)).toEqual([1]);
   });
 
   it("advances a recorded winner into the next round", () => {
@@ -250,21 +257,30 @@ describe("buildEliminationVM — double elimination", () => {
     expect(settled.grandFinal?.b?.name).toBe(lbChampion?.name);
   });
 
-  it("numbers play order contiguously from 1 with no duplicates", () => {
-    const labels = [
-      ...vm.winnersRounds.map((r) => r.label),
-      ...vm.losersRounds.map((r) => r.label),
-      vm.grandFinalLabel ?? "",
-    ];
-    const orders = labels.map((label) => {
-      const match = /^Round (\d+) ·/.exec(label);
-      expect(match).not.toBeNull();
-      return Number(match?.[1]);
+  for (const teamCount of TEAM_COUNTS) {
+    it(`numbers play order contiguously from 1 with no duplicates (${teamCount} teams)`, () => {
+      const built = buildEliminationVM(makeTournament(teamCount, "double"));
+      const labels = [
+        ...built.winnersRounds.map((r) => r.label),
+        ...built.losersRounds.map((r) => r.label),
+        built.grandFinalLabel ?? "",
+      ];
+      const orders = labels.map((label) => {
+        const match = /^Round (\d+) ·/.exec(label);
+        expect(match, label).not.toBeNull();
+        return Number(match?.[1]);
+      });
+      const sorted = [...orders].sort((a, b) => a - b);
+      expect(new Set(orders).size).toBe(orders.length);
+      expect(sorted).toEqual(Array.from({ length: orders.length }, (_, i) => i + 1));
+
+      // A dropped losers round must not leave a gap in the "Losers N" suffixes
+      // either.
+      expect(built.losersRounds.map((r) => r.label.replace(/^Round \d+ · /, ""))).toEqual(
+        built.losersRounds.map((_, i) => `Losers ${i + 1}`),
+      );
     });
-    const sorted = [...orders].sort((a, b) => a - b);
-    expect(new Set(orders).size).toBe(orders.length);
-    expect(sorted).toEqual(Array.from({ length: orders.length }, (_, i) => i + 1));
-  });
+  }
 });
 
 describe("buildEliminationVM — completability", () => {
@@ -312,47 +328,36 @@ describe("buildEliminationVM — completability", () => {
 });
 
 describe("buildEliminationVM — losers bracket structure", () => {
-  /** Rendered shape per team count, plus the structural filler each draw needs.
-   *  Shape is decision-independent, so it is asserted on a fresh VM. */
+  /** Rendered shape per team count. Only contested matches make the sheet, so a
+   *  bye costs a card and a losers round that is nothing but byes is dropped
+   *  entirely (5 and 9 teams lose their first). `hiddenWB` / `hiddenLB` are the
+   *  gap between what the algorithm generates and what it renders, which is the
+   *  only way to observe the filler from outside the engine. Shape is
+   *  decision-independent, so it is asserted on a fresh VM. */
   const SHAPES: Record<
     number,
-    {
-      wb: number[];
-      lb: number[];
-      voids: number;
-      lbWalkovers: number;
-      wbByes: number;
-    }
+    { wb: number[]; lb: number[]; hiddenWB: number; hiddenLB: number }
   > = {
-    4: { wb: [2, 1], lb: [1, 1], voids: 0, lbWalkovers: 0, wbByes: 0 },
-    5: { wb: [4, 2, 1], lb: [1, 2, 1, 1], voids: 1, lbWalkovers: 2, wbByes: 3 },
-    6: { wb: [4, 2, 1], lb: [1, 2, 1, 1], voids: 1, lbWalkovers: 1, wbByes: 2 },
-    7: { wb: [4, 2, 1], lb: [2, 2, 1, 1], voids: 0, lbWalkovers: 1, wbByes: 1 },
-    8: { wb: [4, 2, 1], lb: [2, 2, 1, 1], voids: 0, lbWalkovers: 0, wbByes: 0 },
-    9: {
-      wb: [8, 4, 2, 1],
-      lb: [1, 4, 2, 2, 1, 1],
-      voids: 3,
-      lbWalkovers: 4,
-      wbByes: 7,
-    },
-    10: {
-      wb: [8, 4, 2, 1],
-      lb: [1, 4, 2, 2, 1, 1],
-      voids: 3,
-      lbWalkovers: 3,
-      wbByes: 6,
-    },
-    16: {
-      wb: [8, 4, 2, 1],
-      lb: [4, 4, 2, 2, 1, 1],
-      voids: 0,
-      lbWalkovers: 0,
-      wbByes: 0,
-    },
+    4: { wb: [2, 1], lb: [1, 1], hiddenWB: 0, hiddenLB: 0 },
+    5: { wb: [1, 2, 1], lb: [1, 1, 1], hiddenWB: 3, hiddenLB: 3 },
+    6: { wb: [2, 2, 1], lb: [1, 1, 1, 1], hiddenWB: 2, hiddenLB: 2 },
+    7: { wb: [3, 2, 1], lb: [1, 2, 1, 1], hiddenWB: 1, hiddenLB: 1 },
+    8: { wb: [4, 2, 1], lb: [2, 2, 1, 1], hiddenWB: 0, hiddenLB: 0 },
+    9: { wb: [1, 4, 2, 1], lb: [1, 2, 2, 1, 1], hiddenWB: 7, hiddenLB: 7 },
+    10: { wb: [2, 4, 2, 1], lb: [1, 1, 2, 2, 1, 1], hiddenWB: 6, hiddenLB: 6 },
+    16: { wb: [8, 4, 2, 1], lb: [4, 4, 2, 2, 1, 1], hiddenWB: 0, hiddenLB: 0 },
   };
 
   const sum = (ns: number[]) => ns.reduce((total, x) => total + x, 0);
+
+  /** Raw winners-round sizes: the draw is padded to a power of two and halves. */
+  const rawWinnersCounts = (teamCount: number): number[] => {
+    const counts: number[] = [];
+    for (let size = 2 ** Math.ceil(Math.log2(teamCount)) / 2; size >= 1; size /= 2) {
+      counts.push(size);
+    }
+    return counts;
+  };
 
   for (const teamCount of TEAM_COUNTS) {
     const shape = SHAPES[teamCount];
@@ -362,49 +367,76 @@ describe("buildEliminationVM — losers bracket structure", () => {
 
       expect(vm.winnersRounds.map((r) => r.matches.length)).toEqual(shape.wb);
       expect(vm.losersRounds.map((r) => r.matches.length)).toEqual(shape.lb);
-      expect(vm.losersRounds.length).toBe(2 * vm.winnersRounds.length - 2);
-      // Voids are filtered out of the VM, so they show up as the gap between the
-      // sizes the algorithm generates and the sizes it renders.
-      expect(sum(rawLosersCounts(vm)) - sum(shape.lb)).toBe(shape.voids);
+      // A losers round with nothing contested in it is dropped, so the count is
+      // 2k - 2 minus however many emptied out.
+      expect(vm.losersRounds.length).toBeLessThanOrEqual(
+        2 * vm.winnersRounds.length - 2,
+      );
+      expect(vm.losersRounds.every((r) => r.matches.length > 0)).toBe(true);
+      expect(sum(rawWinnersCounts(teamCount)) - sum(shape.wb)).toBe(shape.hiddenWB);
+      expect(sum(rawLosersCounts(teamCount, vm)) - sum(shape.lb)).toBe(
+        shape.hiddenLB,
+      );
     });
 
-    it(`counts ${shape.wbByes} winners byes and ${shape.lbWalkovers} losers walkovers for ${teamCount} teams`, () => {
-      const { vm } = playOut(teamCount, "double", () => "a");
-      const wbWalkovers = vm.winnersRounds
-        .flatMap((r) => r.matches)
-        .filter((m) => m.status === "walkover");
-      const lbWalkovers = vm.losersRounds
-        .flatMap((r) => r.matches)
-        .filter((m) => m.status === "walkover");
+    it(`renders no bye card at all for ${teamCount} teams`, () => {
+      for (const format of ["single", "double"] as const) {
+        const fresh = buildEliminationVM(makeTournament(teamCount, format));
+        const { vm } = playOut(teamCount, format, () => "a");
 
-      expect(wbWalkovers).toHaveLength(shape.wbByes);
-      expect(wbWalkovers.every((m) => m.key.startsWith("w-0-"))).toBe(true);
-      expect(lbWalkovers).toHaveLength(shape.lbWalkovers);
+        for (const built of [fresh, vm]) {
+          for (const m of renderedMatches(built)) {
+            expect(["playable", "pending"], `${format} ${m.key}`).toContain(m.status);
+            expect(m.a?.isBye, `${format} ${m.key}`).toBeUndefined();
+            expect(m.b?.isBye, `${format} ${m.key}`).toBeUndefined();
+          }
+        }
+      }
     });
 
     it(`drops each winners-round loser into the round below it (${teamCount} teams)`, () => {
       const vm = playOutWinnersOnly(teamCount);
-      const lbNames = vm.losersRounds.map(
-        (r) => new Set(r.matches.flatMap((m) => [m.aName, m.bName])),
+      // Keyed by the *raw* round index the key carries, because a losers round
+      // that is nothing but byes is never rendered and leaves a hole in the
+      // sequence.
+      const lbNames = new Map<number, Set<string>>();
+      const namesInRound = (rawIndex: number) =>
+        lbNames.get(rawIndex) ?? new Set<string>();
+      for (const round of vm.losersRounds) {
+        for (const m of round.matches) {
+          const rawIndex = Number(m.key.split("-")[1]);
+          const names = namesInRound(rawIndex);
+          names.add(m.aName);
+          names.add(m.bName);
+          lbNames.set(rawIndex, names);
+        }
+      }
+      const renderedLosers = new Map(
+        vm.losersRounds.flatMap((r) => r.matches).map((m) => [m.key, m]),
       );
 
       vm.winnersRounds.forEach((round, i) => {
-        const losers = round.matches
-          .filter(
-            (m) =>
-              m.winner !== null &&
-              m.a !== null &&
-              m.b !== null &&
-              m.a.isBye !== true &&
-              m.b.isBye !== true,
-          )
-          .map((m) => (m.winner === "a" ? m.b : m.a));
-        const expectedRound = i === 0 ? 0 : 2 * i - 1;
+        for (const m of round.matches) {
+          if (m.winner === null || m.a === null || m.b === null) continue;
+          const loser = m.winner === "a" ? m.b : m.a;
+          const j = Number(m.key.split("-")[2]);
+          // Round 0 pairs its losers up two at a time; every later round drops
+          // them straight down the zip.
+          const dropRound = i === 0 ? 0 : 2 * i - 1;
+          const dropKey = i === 0 ? `l-0-${Math.floor(j / 2)}` : `l-${dropRound}-${j}`;
+          const target = renderedLosers.get(dropKey);
+          const where = `${loser.name} lost ${m.key}`;
 
-        for (const loser of losers) {
-          const name = loser?.name ?? "";
-          const firstSeen = lbNames.findIndex((names) => names.has(name));
-          expect(firstSeen, `${name} lost winners round ${i}`).toBe(expectedRound);
+          if (target) {
+            expect([target.aName, target.bName], where).toContain(loser.name);
+          } else {
+            // The drop target is a bye, so the loser walks through it and shows
+            // up in a later round — never in an earlier one.
+            const firstSeen = [...lbNames.keys()]
+              .sort((x, y) => x - y)
+              .find((rawIndex) => namesInRound(rawIndex).has(loser.name));
+            expect(firstSeen, where).toBeGreaterThan(dropRound);
+          }
         }
       });
     });
@@ -499,26 +531,72 @@ describe("buildEliminationVM — match numbering", () => {
     ]);
   });
 
+  it("numbers 9 teams (double) 1..16 the way the printed sheet does", () => {
+    const vm = buildEliminationVM(makeTournament(9, "double"));
+
+    expect(vm.winnersRounds.map((r) => r.matches.map((m) => m.playNumber))).toEqual([
+      [1],
+      [2, 3, 4, 5],
+      [7, 8],
+      [11],
+    ]);
+    expect(vm.losersRounds.map((r) => r.matches.map((m) => m.playNumber))).toEqual([
+      [6],
+      [9, 10],
+      [12, 13],
+      [14],
+      [15],
+    ]);
+    expect(vm.grandFinal?.playNumber).toBe(16);
+  });
+
+  it("numbers 7 teams (double) 1..12 with no bracket-reset card", () => {
+    const vm = buildEliminationVM(makeTournament(7, "double"));
+
+    expect(vm.winnersRounds.map((r) => r.matches.map((m) => m.playNumber))).toEqual([
+      [1, 2, 3],
+      [5, 6],
+      [9],
+    ]);
+    expect(vm.losersRounds.map((r) => r.matches.map((m) => m.playNumber))).toEqual([
+      [4],
+      [7, 8],
+      [10],
+      [11],
+    ]);
+    expect(vm.grandFinal?.playNumber).toBe(12);
+  });
+
   for (const teamCount of TEAM_COUNTS) {
     for (const format of ["single", "double"] as const) {
-      it(`numbers every rendered match once, 1..N (${teamCount} teams, ${format})`, () => {
+      const expectedCards = format === "double" ? 2 * teamCount - 2 : teamCount - 1;
+
+      it(`renders exactly ${expectedCards} cards numbered 1..N (${teamCount} teams, ${format})`, () => {
         const rendered = renderedMatches(
           buildEliminationVM(makeTournament(teamCount, format)),
         );
         const numbers = rendered.map((m) => m.playNumber).sort((a, b) => a - b);
 
+        expect(rendered).toHaveLength(expectedCards);
         expect(numbers).toEqual(
           Array.from({ length: rendered.length }, (_, i) => i + 1),
         );
       });
 
-      it(`keeps match numbers stable as results come in (${teamCount} teams, ${format})`, () => {
-        const numbersOf = (vm: EliminationVM) =>
-          Object.fromEntries(renderedMatches(vm).map((m) => [m.key, m.playNumber]));
+      it(`keeps the sheet identical as results come in (${teamCount} teams, ${format})`, () => {
+        /** Everything a card shows that must not move: which cards exist, their
+         *  numbers, and every source label on them. */
+        const sheetOf = (vm: EliminationVM) =>
+          renderedMatches(vm).map((m) => [
+            m.key,
+            m.playNumber,
+            m.aSource?.label ?? null,
+            m.bSource?.label ?? null,
+          ]);
         const fresh = buildEliminationVM(makeTournament(teamCount, format));
         const { vm: played } = playOut(teamCount, format, () => "a");
 
-        expect(numbersOf(played)).toEqual(numbersOf(fresh));
+        expect(sheetOf(played)).toEqual(sheetOf(fresh));
       });
     }
   }
@@ -547,14 +625,33 @@ describe("buildEliminationVM — slot sources", () => {
     expect(matches.get("l-3-0")?.bSource?.description).toBe("Loser of match 11");
   });
 
-  it("leaves a slot sourceless when its feeder is void (6 teams)", () => {
+  it("chases a source through a hidden bye to the nearest rendered match (6 teams)", () => {
     const matches = byKey(buildEliminationVM(makeTournament(6, "double")));
+    const numberOf = (key: string) => matches.get(key)?.playNumber;
 
     expect(labelsOf(matches, "l-0-0")).toEqual(["L1", "L2"]);
-    // `l-0-1` is void, so it is never rendered and never numbered — the slot it
-    // would have fed shows nothing at all.
-    expect(matches.get("l-1-1")?.aSource).toBeNull();
-    expect(matches.get("l-1-1")?.bSource?.label).toBe("L7");
+    expect(labelsOf(matches, "l-1-0")[0]).toBe(`W${numberOf("l-0-0")}`);
+    // `l-1-1` is a bye: its only live slot holds the loser of `w-1-1`, so the
+    // slot it feeds names that match rather than showing nothing at all.
+    expect(matches.get("l-1-1")).toBeUndefined();
+    expect(labelsOf(matches, "l-2-0")[1]).toBe(`L${numberOf("w-1-1")}`);
+  });
+
+  it("chases through a bye in the losers bracket too (9 teams)", () => {
+    const matches = byKey(buildEliminationVM(makeTournament(9, "double")));
+    const numberOf = (key: string) => matches.get(key)?.playNumber;
+
+    // `l-0-0` pairs the loser of `w-0-0` against a bye and is never rendered;
+    // `l-1-0`'s first slot therefore points straight at `w-0-0`.
+    expect(matches.get("l-0-0")).toBeUndefined();
+    expect(labelsOf(matches, "l-1-0")).toEqual([
+      `L${numberOf("w-0-0")}`,
+      `L${numberOf("w-1-0")}`,
+    ]);
+    expect(labelsOf(matches, "l-2-1")).toEqual([
+      `L${numberOf("w-1-2")}`,
+      `L${numberOf("w-1-3")}`,
+    ]);
   });
 
   for (const teamCount of TEAM_COUNTS) {
@@ -579,6 +676,24 @@ describe("buildEliminationVM — slot sources", () => {
             (m) => m.aSource === null && m.bSource === null,
           ),
         ).toBe(true);
+      });
+
+      it(`never drops the label off an undecided losers slot (${teamCount} teams, ${format})`, () => {
+        const vm = buildEliminationVM(makeTournament(teamCount, format));
+
+        // A losers slot is only ever filled from upstream, so hiding a bye must
+        // never leave one blank: every empty slot still names where its team
+        // comes from.
+        for (const round of vm.losersRounds) {
+          for (const m of round.matches) {
+            if (m.a === null) expect(m.aSource, `${m.key}.a`).not.toBeNull();
+            if (m.b === null) expect(m.bSource, `${m.key}.b`).not.toBeNull();
+          }
+        }
+        if (vm.grandFinal) {
+          if (vm.grandFinal.a === null) expect(vm.grandFinal.aSource).not.toBeNull();
+          if (vm.grandFinal.b === null) expect(vm.grandFinal.bSource).not.toBeNull();
+        }
       });
     }
   }

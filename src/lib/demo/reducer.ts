@@ -1,4 +1,5 @@
 import type { RosterEntry, Tournament } from "@/lib/data/types";
+import { removePlayer } from "@/lib/tournament/roster";
 import {
   getCapacity,
   makeEmptyTeamPlayers,
@@ -11,8 +12,13 @@ import type {
   TournamentFormat,
 } from "@/lib/validation/enums";
 
+import { QUICK_PLAY_ID } from "./quick-play";
+
 export type DemoState = {
   tournaments: Tournament[];
+  /** The Quick Play whiteboard session — see `patch` below for why it is here
+   *  and not in `tournaments`. */
+  quickPlay: Tournament;
 };
 
 export type DemoAction =
@@ -29,14 +35,29 @@ export type DemoAction =
   | { type: "shuffleIntoTeams"; id: string; pool: string[] }
   | { type: "assignPlayer"; id: string; name: string }
   | { type: "resetAssignments"; id: string }
-  | { type: "addRosterEntry"; id: string; entry: RosterEntry };
+  | { type: "addRosterEntry"; id: string; entry: RosterEntry }
+  | { type: "removeRosterEntry"; id: string; name: string };
 
+/**
+ * Every action but `create` funnels through here, which is what lets the Quick
+ * Play session reuse all of them. One reserved id — `QUICK_PLAY_ID` — routes to
+ * the whiteboard slot instead of the tournaments array; the session is never in
+ * `state.tournaments`, so it cannot reach `useDemoTournaments()` and therefore
+ * cannot appear in any tournament listing, now or in future.
+ */
 function patch(
   state: DemoState,
   id: string,
   update: (t: Tournament) => Partial<Tournament>,
 ): DemoState {
+  if (id === QUICK_PLAY_ID) {
+    return {
+      ...state,
+      quickPlay: { ...state.quickPlay, ...update(state.quickPlay) },
+    };
+  }
   return {
+    ...state,
     tournaments: state.tournaments.map((t) =>
       t.id === id ? { ...t, ...update(t) } : t,
     ),
@@ -68,7 +89,7 @@ function fillTeams(
 export function demoReducer(state: DemoState, action: DemoAction): DemoState {
   switch (action.type) {
     case "create":
-      return { tournaments: [...state.tournaments, action.tournament] };
+      return { ...state, tournaments: [...state.tournaments, action.tournament] };
 
     case "setDecision":
       return patch(state, action.id, (t) => ({
@@ -140,5 +161,10 @@ export function demoReducer(state: DemoState, action: DemoAction): DemoState {
       return patch(state, action.id, (t) => ({
         roster: [...t.roster, action.entry],
       }));
+
+    // Removing a player also empties their team slot, but leaves results alone —
+    // see `removePlayer`.
+    case "removeRosterEntry":
+      return patch(state, action.id, (t) => removePlayer(t, action.name));
   }
 }

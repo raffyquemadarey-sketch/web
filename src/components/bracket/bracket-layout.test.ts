@@ -13,7 +13,8 @@ function makeTournament(teamCount: number, format: TournamentFormat): Tournament
   return {
     id: "test",
     name: "Test",
-    dates: "Jan 1",
+    startDate: "2026-01-01",
+    endDate: null,
     location: "Test hall",
     level: "All levels",
     divisions: "Singles",
@@ -138,6 +139,79 @@ describe("layoutSection — 8-team double elimination", () => {
       hasIncoming: true,
       // Its edge to the grand final crosses sections, so nothing is drawn.
       hasOutgoing: false,
+    });
+  });
+});
+
+describe("layoutSection — draws with byes hidden", () => {
+  const [winners, losers] = sectionsOf(9, "double");
+
+  it("gives a 9-team winners bracket one fed column and three fresh leaves", () => {
+    const layout = layoutSection(winners);
+    const at = (key: string) => layout.placements.get(key);
+
+    expect(layout.columns).toBe(5);
+    expect(layout.rows).toBe(4);
+
+    // Only one opening match survives the bye filter, and it is the only feeder
+    // `w-1-0` has — a straight line, no riser.
+    expect(at("w-0-0")).toMatchObject({
+      column: 1,
+      rowStart: 1,
+      rowSpan: 1,
+      hasIncoming: false,
+      hasOutgoing: true,
+    });
+    expect(at("w-1-0")).toMatchObject({
+      column: 2,
+      rowStart: 1,
+      rowSpan: 1,
+      riserTopPct: null,
+      hasIncoming: true,
+    });
+    // The other three round-1 matches are fed entirely by byes, so they become
+    // leaf rows of their own rather than pointing at empty space.
+    for (const i of [1, 2, 3]) {
+      expect(at(`w-1-${i}`), `w-1-${i}`).toMatchObject({
+        column: 2,
+        rowStart: i + 1,
+        rowSpan: 1,
+        hasIncoming: false,
+      });
+    }
+  });
+
+  it("drops the empty first losers column from a 9-team draw", () => {
+    const layout = layoutSection(losers);
+
+    expect(layout.columns).toBe(5);
+    expect(layout.rows).toBe(2);
+    expect(layout.placements.get("l-0-0")).toBeUndefined();
+    expect(layout.placements.get("l-1-0")).toMatchObject({
+      column: 1,
+      rowStart: 1,
+      rowSpan: 1,
+      hasIncoming: false,
+    });
+  });
+
+  it("makes a 7-team losers match with a hidden feeder a leaf", () => {
+    const layout = layoutSection(sectionsOf(7, "double")[1]);
+
+    expect(layout.columns).toBe(4);
+    expect(layout.rows).toBe(2);
+    expect(layout.placements.get("l-0-1")).toBeUndefined();
+    expect(layout.placements.get("l-1-0")).toMatchObject({
+      rowStart: 1,
+      rowSpan: 1,
+      hasIncoming: true,
+      riserTopPct: null,
+    });
+    // `l-0-1` is a bye, so `l-1-1` has no in-section feeder left at all.
+    expect(layout.placements.get("l-1-1")).toMatchObject({
+      rowStart: 2,
+      rowSpan: 1,
+      hasIncoming: false,
     });
   });
 });

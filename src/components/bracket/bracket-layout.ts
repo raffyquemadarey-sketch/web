@@ -32,7 +32,12 @@ export type SectionLayout = {
  *  Only *in-section* edges count. A losers match fed by a winners-bracket
  *  drop-in, or the grand final's losers-side slot, has a source but no feeder
  *  here — those relationships are shown by the `L7` / `W13` labels instead, the
- *  way a printed sheet does it. */
+ *  way a printed sheet does it.
+ *
+ *  Byes never reach this function: the VM resolves a hidden bye away before
+ *  layout sees it, so every source names a match that is genuinely rendered. A
+ *  match whose only feeder was a bye therefore either keeps its one remaining
+ *  feeder (a straight line) or becomes a fresh leaf row. */
 export function layoutSection(rounds: RoundVM[]): SectionLayout {
   const rendered = new Set<string>();
   for (const round of rounds) {

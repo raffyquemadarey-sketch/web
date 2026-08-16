@@ -3,6 +3,8 @@
 import { zodResolver } from "@hookform/resolvers/zod";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
+import { useEffect, useState } from "react";
+import type { ChangeEvent } from "react";
 import { Controller, useForm, useWatch } from "react-hook-form";
 
 import { ScheduleEstimateNotice } from "@/components/admin/schedule-estimate-notice";
@@ -15,7 +17,7 @@ import {
   TEAM_OPTIONS,
 } from "@/components/admin/tournament-settings";
 import { Button } from "@/components/ui/button";
-import { Field, FieldError, FieldLabel } from "@/components/ui/field";
+import { Field, FieldError, FieldHint, FieldLabel } from "@/components/ui/field";
 import { FormCard } from "@/components/ui/form-card";
 import { Input } from "@/components/ui/input";
 import { SegmentedControl } from "@/components/ui/segmented-control";
@@ -23,6 +25,9 @@ import { Select } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 import { newDemoTournamentId } from "@/lib/data/repository";
 import { useDemoActions } from "@/lib/demo/demo-data-provider";
+import { formatTournamentDates } from "@/lib/tournament/dates";
+import { googleMapsSearchUrl } from "@/lib/tournament/maps";
+import { suggestTournamentName } from "@/lib/tournament/naming";
 import { makeEmptyTeamPlayers, makeTeams } from "@/lib/tournament/teams";
 import { tournamentDraftSchema } from "@/lib/validation/schemas";
 import type { TournamentDraftInput } from "@/lib/validation/schemas";
@@ -34,6 +39,7 @@ export function CreateTournamentForm() {
   const {
     control,
     register,
+    setValue,
     handleSubmit,
     formState: { errors },
   } = useForm<TournamentDraftInput>({
@@ -41,7 +47,8 @@ export function CreateTournamentForm() {
     mode: "onBlur",
     defaultValues: {
       name: "",
-      dates: "",
+      startDate: "",
+      endDate: "",
       location: "",
       level: "",
       description: "",
@@ -54,21 +61,61 @@ export function CreateTournamentForm() {
     },
   });
 
-  /* The live schedule estimate needs the draft's current scheduling settings.
+  /* The live schedule estimate needs the draft's current scheduling settings, and
+     the auto-filled name needs the location and dates.
      `useForm().watch()` would do it, but the React Compiler cannot memoize a
      function-returning API and skips the whole component in response; `useWatch`
-     subscribes to just these five fields and keeps the component compiled. */
-  const [format, teamCount, courtCount, matchMinutes, sessionMinutes] = useWatch({
+     subscribes to just these eight fields and keeps the component compiled. */
+  const [
+    format,
+    teamCount,
+    courtCount,
+    matchMinutes,
+    sessionMinutes,
+    location,
+    startDate,
+    endDate,
+  ] = useWatch({
     control,
-    name: ["format", "teamCount", "courtCount", "matchMinutes", "sessionMinutes"],
+    name: [
+      "format",
+      "teamCount",
+      "courtCount",
+      "matchMinutes",
+      "sessionMinutes",
+      "location",
+      "startDate",
+      "endDate",
+    ],
   });
+
+  /* The name writes itself from location + dates until the admin types their own.
+     A local flag, not `dirtyFields.name`: `setValue` only touches dirty state when
+     asked to, but RHF recomputes the whole form's dirty set whenever any field
+     returns to its default, which would spuriously mark an auto-filled name dirty
+     and kill auto-fill for good. Only a real keystroke in the name field counts. */
+  const [nameOverridden, setNameOverridden] = useState(false);
+  const dates = formatTournamentDates(startDate, endDate ? endDate : null);
+  const suggestedName = suggestTournamentName({ location, dates });
+  const locationMapUrl = googleMapsSearchUrl(location ?? "");
+
+  useEffect(() => {
+    if (nameOverridden) return;
+    /* No `shouldDirty`/`shouldTouch` — marking the field edited is the one thing
+       this must not do. `shouldValidate` is gated on a suggestion long enough to
+       pass the schema, so validating can only clear a stale "Enter a tournament
+       name." and never flash a new error while `mode: "onBlur"` is in force.
+       Writing `name` cannot change `suggestedName`, so this cannot loop. */
+    setValue("name", suggestedName, { shouldValidate: suggestedName.length >= 2 });
+  }, [nameOverridden, suggestedName, setValue]);
 
   const onSubmit = handleSubmit((values) => {
     const id = newDemoTournamentId();
     createTournament({
       id,
       name: values.name,
-      dates: values.dates,
+      startDate: values.startDate,
+      endDate: values.endDate ? values.endDate : null,
       location: values.location,
       level: values.level,
       divisions: "Singles, doubles, mixed",
@@ -111,17 +158,59 @@ export function CreateTournamentForm() {
           marginBottom: "14px",
         }}
       >
-        <Field error={errors.name?.message} style={{ gridColumn: "1 / -1" }}>
+        <Field
+          error={errors.name?.message}
+          hint={
+            nameOverridden
+              ? undefined
+              : "Auto-filled from location and dates — edit to use your own."
+          }
+          style={{ gridColumn: "1 / -1" }}
+        >
           <FieldLabel>Tournament name</FieldLabel>
-          <Input type="text" placeholder="Spring Smash" {...register("name")} />
+          <Input
+            type="text"
+            placeholder="Spring Smash"
+            {...register("name", {
+              /* Fires on genuine typing only: `setValue` assigns `input.value`
+                 directly and dispatches no event. Clearing the field back to
+                 empty re-arms auto-fill. */
+              onChange: (event: ChangeEvent<HTMLInputElement>) => {
+                setNameOverridden(event.target.value.trim().length > 0);
+              },
+            })}
+          />
           <FieldError />
+          <FieldHint />
         </Field>
-        <Field error={errors.dates?.message}>
-          <FieldLabel>Dates</FieldLabel>
-          <Input type="text" placeholder="Mar 6–8" {...register("dates")} />
-          <FieldError />
-        </Field>
-        <Field error={errors.location?.message}>
+        {/* Their own grid: two native date controls squeezed into the outer
+            140px tracks would render below their intrinsic width. */}
+        <div
+          style={{
+            gridColumn: "1 / -1",
+            display: "grid",
+            gridTemplateColumns: "repeat(auto-fit, minmax(150px, 1fr))",
+            gap: "14px",
+          }}
+        >
+          <Field error={errors.startDate?.message}>
+            <FieldLabel>Start date</FieldLabel>
+            <Input type="date" {...register("startDate")} />
+            <FieldError />
+          </Field>
+          <Field
+            error={errors.endDate?.message}
+            hint="Leave blank for a one-day event."
+          >
+            <FieldLabel>End date</FieldLabel>
+            {/* `min` is a courtesy to the native picker; the schema's superRefine
+                is what actually rejects an end date before the start. */}
+            <Input type="date" min={startDate || undefined} {...register("endDate")} />
+            <FieldError />
+            <FieldHint />
+          </Field>
+        </div>
+        <Field error={errors.location?.message} style={{ gridColumn: "1 / -1" }}>
           <FieldLabel>Location</FieldLabel>
           <Input
             type="text"
@@ -129,6 +218,22 @@ export function CreateTournamentForm() {
             {...register("location")}
           />
           <FieldError />
+          {locationMapUrl ? (
+            <a
+              href={locationMapUrl}
+              target="_blank"
+              rel="noreferrer noopener"
+              style={{
+                display: "inline-block",
+                fontSize: "12px",
+                opacity: 0.7,
+                marginTop: "5px",
+                textDecoration: "underline",
+              }}
+            >
+              View on Google Maps →
+            </a>
+          ) : null}
         </Field>
         <Field error={errors.level?.message} style={{ gridColumn: "1 / -1" }}>
           <FieldLabel>Level</FieldLabel>

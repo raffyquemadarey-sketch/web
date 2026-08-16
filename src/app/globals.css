@@ -273,6 +273,13 @@
     min-height: 90px;
     resize: vertical;
   }
+  /* Without this iOS Safari draws its own chrome on a date input, at the
+     control's intrinsic width and ignoring the border radius. */
+  input[type="date"].input {
+    appearance: none;
+    -webkit-appearance: none;
+    min-width: 0;
+  }
   .radio {
     display: inline-flex;
     align-items: center;

@@ -24,6 +24,13 @@ function isBye(team: BracketTeam | null): boolean {
   return team?.isBye === true;
 }
 
+/** Whether a match is a real fixture someone could turn up for, and therefore
+ *  the only thing worth putting on the sheet. Note this keys off slot BYE-ness,
+ *  not `status`: a slot's BYE-ness is written when the draw is built and never
+ *  changes, whereas `status` moves from `pending` to `walkover` as results land.
+ *  Numbering off `status` would renumber the sheet mid-tournament. */
+const isContested = (m: RawMatch): boolean => !isBye(m.a) && !isBye(m.b);
+
 /** A bracket slot. A team, the BYE sentinel (structurally empty — nothing will
  *  ever land here), or null (an upstream match exists but is undecided). */
 type Slot = BracketTeam | null;
@@ -56,8 +63,13 @@ export function buildEliminationVM(t: Tournament): EliminationVM {
 
   /** Slot → feeding match, keyed by the fed match. Absent entries (winners
    *  round 0) mean "nothing upstream", which is not the same as a feeder that
-   *  exists but is never rendered — that one resolves to a null source below. */
+   *  exists but is never rendered — that one is chased through below. */
   const slotRefs: Record<string, { a: SlotRef | null; b: SlotRef | null }> = {};
+
+  /** Every match the algorithm builds, rendered or not. Chasing a source through
+   *  a hidden match means looking at that match's own slots, so they have to
+   *  stay reachable after the filtering below drops them from the VM. */
+  const rawByKey = new Map<string, RawMatch>();
 
   const mk = (
     key: string,
@@ -90,7 +102,7 @@ export function buildEliminationVM(t: Tournament): EliminationVM {
       winner === "a" ? realOrNull(aTeam) : winner === "b" ? realOrNull(bTeam) : null;
     const court = (courtSeq % courtCount) + 1;
     if (canPick) courtSeq++;
-    return {
+    const match: RawMatch = {
       key,
       a: aTeam,
       b: bTeam,
@@ -103,6 +115,8 @@ export function buildEliminationVM(t: Tournament): EliminationVM {
       court,
       courtLabel: `Court ${court}`,
     };
+    rawByKey.set(key, match);
+    return match;
   };
 
   /** What a match feeds into the next round: its winner, or structural emptiness
@@ -111,8 +125,9 @@ export function buildEliminationVM(t: Tournament): EliminationVM {
   const nextSlot = (m: RawMatch): Slot => (m.status === "void" ? BYE : m.winnerTeam);
 
   /** Numbers every rendered match `1..N` in play order, then hands each match
-   *  its number and its resolved slot sources. A feeder that is not rendered
-   *  (a void match) has no number, so the slot it feeds shows no source. */
+   *  its number and its resolved slot sources. `orderedRounds` is exactly the
+   *  rendered set, so anything a slot points at that is missing from `numbers`
+   *  is a hidden match and gets chased through to the nearest rendered ancestor. */
   const numberAndDecorate = (orderedRounds: RawMatch[][]) => {
     const numbers = new Map<string, number>();
     let playSeq = 0;
@@ -120,14 +135,45 @@ export function buildEliminationVM(t: Tournament): EliminationVM {
       for (const match of round) numbers.set(match.key, ++playSeq);
     }
 
+    /** What a hidden match's winner really is. A hidden match has at most one
+     *  live slot — the other is the BYE sentinel — so whatever lands in that
+     *  slot is the team that walks straight through, and its source is *this*
+     *  match's source. A void match has no live slot at all and ends the chain.
+     *  A loser-ref ends it too: a match nobody plays produces no loser. (No
+     *  rendered slot ever holds a loser-ref to a hidden match — a hidden winners
+     *  match drops the BYE sentinel into the losers slot below it, which makes
+     *  that losers match hidden in turn.) */
+    const passThrough = (ref: SlotRef): SlotRef | null => {
+      const hidden = rawByKey.get(ref.key);
+      if (!hidden || ref.outcome === "loser") return null;
+      const side = !isBye(hidden.a) ? "a" : !isBye(hidden.b) ? "b" : null;
+      if (!side) return null;
+      return slotRefs[hidden.key]?.[side] ?? null;
+    };
+
+    /** Walks upstream until the ref names a rendered match, or dies. Refs point
+     *  strictly at earlier matches, so this terminates; the seen set is belt and
+     *  braces. */
+    const resolveRef = (ref: SlotRef | null | undefined): SlotRef | null => {
+      const seen = new Set<string>();
+      let current = ref ?? null;
+      while (current && !numbers.has(current.key)) {
+        if (seen.has(current.key)) return null;
+        seen.add(current.key);
+        current = passThrough(current);
+      }
+      return current;
+    };
+
     const sourceOf = (ref: SlotRef | null | undefined): SlotSource | null => {
-      if (!ref) return null;
-      const number = numbers.get(ref.key);
+      const resolved = resolveRef(ref);
+      if (!resolved) return null;
+      const number = numbers.get(resolved.key);
       if (number === undefined) return null;
-      const winnerSide = ref.outcome === "winner";
+      const winnerSide = resolved.outcome === "winner";
       return {
-        key: ref.key,
-        outcome: ref.outcome,
+        key: resolved.key,
+        outcome: resolved.outcome,
         number,
         label: `${winnerSide ? "W" : "L"}${number}`,
         description: `${winnerSide ? "Winner" : "Loser"} of match ${number}`,
@@ -177,11 +223,18 @@ export function buildEliminationVM(t: Tournament): EliminationVM {
   }
   const wbChampion = realOrNull(current[0] ?? null);
 
+  /* Only contested matches reach the sheet. A bye is not a fixture: the team
+     that draws one simply turns up in its next-round slot, exactly as a printed
+     draw shows it. `winnersRoundsRaw` stays the structural truth — losers drop
+     slots, depths and round labels are all derived from it. Powers of two have
+     no BYE slot anywhere, so both arrays are identical there. */
+  const winnersRendered = winnersRoundsRaw.map((round) => round.filter(isContested));
+
   if (t.format !== "double") {
-    const decorate = numberAndDecorate(winnersRoundsRaw);
+    const decorate = numberAndDecorate(winnersRendered);
     const winnersRounds: RoundVM[] = winnersRoundsRaw.map((round, i) => ({
       label: `Round ${i + 1} · ${roundLabel(round.length)}`,
-      matches: round.map((match) => decorate(match)),
+      matches: winnersRendered[i].map((match) => decorate(match)),
     }));
     return {
       kind: "elimination",
@@ -275,15 +328,12 @@ export function buildEliminationVM(t: Tournament): EliminationVM {
   }
   const lbChampion = realOrNull(survObjs[0] ?? null);
 
-  // Void matches are structural filler; rendering them would put dead
-  // "TBD v TBD" cards in the column. Walkovers are kept, matching how the
-  // winners bracket already shows byes. No losers round is ever entirely void —
-  // round 0 always receives at least one contested winners match, and rounds >= 1
-  // always receive real winners-bracket losers — so no round is dropped and the
-  // round ordering below stays aligned with the raw indices.
-  const losersRendered = losersRoundsRaw.map((round) =>
-    round.filter((m) => m.status !== "void"),
-  );
+  // Same filter as the winners bracket: a slot fed by a bye is filler, whether
+  // it is void (both slots empty) or a walkover-to-be (one slot empty). Unlike
+  // the winners bracket a whole losers round can come out empty — 5 and 9 teams
+  // drop every match of losers round 0 — so the round ordering below has to skip
+  // those rounds rather than assume it lines up with the raw indices.
+  const losersRendered = losersRoundsRaw.map((round) => round.filter(isContested));
 
   const grandFinalRaw = mk("gf", wbChampion, lbChampion);
   slotRefs["gf"] = {
@@ -303,11 +353,18 @@ export function buildEliminationVM(t: Tournament): EliminationVM {
   }
   const depthGF = Math.max(depthWB[k - 1], depthLB[depthLB.length - 1]) + 1;
 
+  // A losers round with nothing contested in it is not a round anyone turns up
+  // for, so it is dropped before the "Round N" numbers are handed out and the
+  // sequence stays contiguous. Only losers rounds can empty out: winners round 0
+  // always keeps n - targetSize/2 >= 1 matches, later winners rounds hold no BYE
+  // slot at all, and the grand final's two slots are real teams or null.
   const roundOrder: { section: "w" | "l" | "gf"; index: number; depth: number }[] = [
     ...depthWB.map((depth, index) => ({ section: "w" as const, index, depth })),
     ...depthLB.map((depth, index) => ({ section: "l" as const, index, depth })),
     { section: "gf" as const, index: 0, depth: depthGF },
-  ];
+  ].filter(
+    (round) => round.section !== "l" || losersRendered[round.index].length > 0,
+  );
   roundOrder.sort(
     (x, y) =>
       x.depth - y.depth ||
@@ -327,21 +384,28 @@ export function buildEliminationVM(t: Tournament): EliminationVM {
   const decorate = numberAndDecorate(
     roundOrder.map((round) =>
       round.section === "w"
-        ? winnersRoundsRaw[round.index]
+        ? winnersRendered[round.index]
         : round.section === "l"
           ? losersRendered[round.index]
           : [grandFinalRaw],
     ),
   );
 
+  // The winners label still reads off the *raw* round size, so a 9-team draw
+  // calls its one-card opening column "Round of 16" rather than "Final".
   const winnersRounds: RoundVM[] = winnersRoundsRaw.map((round, i) => ({
     label: `Round ${wbOrder[i]} · ${roundLabel(round.length)}`,
-    matches: round.map((match) => decorate(match)),
+    matches: winnersRendered[i].map((match) => decorate(match)),
   }));
-  const losersRounds: RoundVM[] = losersRendered.map((round, i) => ({
-    label: `Round ${lbOrder[i]} · Losers ${i + 1}`,
-    matches: round.map((match) => decorate(match)),
-  }));
+  // "Losers N" counts the columns the sheet actually shows, so a dropped round
+  // leaves no gap there either.
+  const losersRounds: RoundVM[] = losersRendered
+    .map((round, i) => ({ round, i }))
+    .filter(({ round }) => round.length > 0)
+    .map(({ round, i }, position) => ({
+      label: `Round ${lbOrder[i]} · Losers ${position + 1}`,
+      matches: round.map((match) => decorate(match)),
+    }));
   const grandFinal = decorate(grandFinalRaw);
 
   return {

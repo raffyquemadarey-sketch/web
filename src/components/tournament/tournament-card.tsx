@@ -4,6 +4,7 @@ import { ButtonLink } from "@/components/ui/button";
 import { Card, CardBody, CardKicker, CardMedia, CardTitle } from "@/components/ui/card";
 import { Tag } from "@/components/ui/tag";
 import type { Tournament } from "@/lib/data/types";
+import { formatTournamentDates } from "@/lib/tournament/dates";
 
 export function TournamentCard({ tournament }: { tournament: Tournament }) {
   const href = `/tournaments/${tournament.id}`;
@@ -19,7 +20,9 @@ export function TournamentCard({ tournament }: { tournament: Tournament }) {
           flex: 1,
         }}
       >
-        <CardKicker>{tournament.dates}</CardKicker>
+        <CardKicker>
+          {formatTournamentDates(tournament.startDate, tournament.endDate)}
+        </CardKicker>
         <CardTitle style={{ fontSize: "19px", margin: 0 }}>
           <Link href={href} style={{ color: "inherit", textDecoration: "none" }}>
             {tournament.name}

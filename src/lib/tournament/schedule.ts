@@ -38,7 +38,8 @@ export type ScheduleEstimate = ScheduleInput & {
   fitsInSession: boolean;
   overrunMinutes: number;
   spareMinutes: number;
-  /** See `getRoundSizes`: a non-power-of-two double draw can only be bounded. */
+  /** True for a non-power-of-two double draw, which the UI still presents as a
+   *  ceiling rather than a forecast. See `estimateSchedule`. */
   isUpperBound: boolean;
 };
 
@@ -49,7 +50,8 @@ function probeTournament(format: TournamentFormat, teamCount: number): Tournamen
   return {
     id: "schedule-probe",
     name: "Schedule probe",
-    dates: "",
+    startDate: "",
+    endDate: null,
     location: "",
     level: "",
     divisions: "",
@@ -72,8 +74,9 @@ function isPowerOfTwo(n: number): boolean {
   return n >= 1 && (n & (n - 1)) === 0;
 }
 
-/** Matches in a round that will actually be played: a walkover advances a team
- *  without anyone stepping on court, and a void match is structural filler. */
+/** Matches in a round that will actually be played. The VM already hides byes,
+ *  so nothing it renders is a walkover or a void; the filter stays as a guard
+ *  in case a future draw shape puts one back. */
 function countContested(matches: readonly MatchVM[]): number {
   return matches.filter((m) => m.status !== "void" && m.status !== "walkover").length;
 }
@@ -120,12 +123,11 @@ export function estimateSchedule(input: ScheduleInput): ScheduleEstimate {
     fitsInSession: estimatedMinutes <= input.sessionMinutes,
     overrunMinutes: Math.max(0, estimatedMinutes - input.sessionMinutes),
     spareMinutes: Math.max(0, input.sessionMinutes - estimatedMinutes),
-    // A double-elimination draw that is not a power of two schedules losers
-    // slots fed by a winners-bracket bye. Those are `pending` until results
-    // land and only then resolve to walkovers, so the engine genuinely cannot
-    // know in advance how many will be contested — 9 teams schedules 20 where
-    // only 2n-2 = 16 can ever be played. The estimate is a ceiling, not a
-    // forecast, and `describeSchedule` says so.
+    // Kept as a ceiling for a non-power-of-two double draw, deliberately. The
+    // counts themselves are now exact — the VM hides every bye, so 9 teams
+    // totals the 2n-2 = 16 matches that can actually be played — but the flag
+    // and the "Byes may make it shorter." copy it drives are still what tells an
+    // admin the sheet is padded, so both stay until the copy is reworked.
     isUpperBound:
       roundSizes.length > 0 &&
       input.format === "double" &&

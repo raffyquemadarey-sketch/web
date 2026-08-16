@@ -10,7 +10,8 @@ export const seedTournaments: readonly Tournament[] = [
   {
     id: "autumn-open",
     name: "Autumn Open",
-    dates: "Sept 12–14",
+    startDate: "2026-09-12",
+    endDate: "2026-09-14",
     location: "Riverside Sports Centre",
     level: "All levels",
     divisions: "Singles, doubles, mixed",
@@ -47,7 +48,8 @@ export const seedTournaments: readonly Tournament[] = [
   {
     id: "city-shuttle-classic",
     name: "City Shuttle Classic",
-    dates: "Oct 3–5",
+    startDate: "2026-10-03",
+    endDate: "2026-10-05",
     location: "Downtown Racquet Club",
     level: "Intermediate+",
     divisions: "Singles, doubles",
@@ -84,7 +86,8 @@ export const seedTournaments: readonly Tournament[] = [
   {
     id: "junior-family-cup",
     name: "Junior & Family Cup",
-    dates: "Oct 18",
+    startDate: "2026-10-18",
+    endDate: null,
     location: "Oakwood Leisure Centre",
     level: "All levels",
     divisions: "Singles, mixed",
@@ -109,7 +112,8 @@ export const seedTournaments: readonly Tournament[] = [
   {
     id: "winter-championships",
     name: "Winter County Championships",
-    dates: "Nov 21–23",
+    startDate: "2026-11-21",
+    endDate: "2026-11-23",
     location: "County Arena",
     level: "Advanced",
     divisions: "Singles, doubles, mixed",

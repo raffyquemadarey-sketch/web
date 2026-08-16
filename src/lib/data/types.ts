@@ -18,7 +18,11 @@ export type DecisionMap = Record<string, MatchSide>;
 export type Tournament = {
   id: string;
   name: string;
-  dates: string;
+  /** ISO `YYYY-MM-DD`, a local calendar date. Never parse with `new Date()` —
+      that reads it as UTC midnight. Format via `formatTournamentDates`. */
+  startDate: string;
+  /** ISO `YYYY-MM-DD`, or `null` for a one-day event. */
+  endDate: string | null;
   location: string;
   level: string;
   divisions: string;
