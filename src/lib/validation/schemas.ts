@@ -119,9 +119,20 @@ export const addPlayerSchema = z.object({
     .max(40, "Keep names under 40 characters."),
 });
 
+/* The one thing the create form asks for. Every other Quick Play setting is
+   editable on the session page, so asking for it twice would only be slower. */
+export const quickPlayTitleSchema = z
+  .string("Give this quick play a title.")
+  .trim()
+  .min(2, "Give this quick play a title.")
+  .max(60, "Keep the title under 60 characters.");
+
+export const quickPlayDraftSchema = z.object({ title: quickPlayTitleSchema });
+
 export type RegistrationInput = z.infer<typeof registrationSchema>;
 export type SignInInput = z.infer<typeof signInSchema>;
 export type ConfirmEntryInput = z.infer<typeof confirmEntrySchema>;
 export type TournamentDraftInput = z.infer<typeof tournamentDraftSchema>;
 export type TeamNameInput = z.infer<typeof teamNameSchema>;
 export type AddPlayerInput = z.infer<typeof addPlayerSchema>;
+export type QuickPlayDraftInput = z.infer<typeof quickPlayDraftSchema>;

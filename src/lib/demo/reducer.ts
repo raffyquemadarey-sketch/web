@@ -12,13 +12,21 @@ import type {
   TournamentFormat,
 } from "@/lib/validation/enums";
 
-import { QUICK_PLAY_ID } from "./quick-play";
+import { QUICK_PLAY_ID, createQuickPlaySession } from "./quick-play";
 
 export type DemoState = {
   tournaments: Tournament[];
+  /** The uuid of the saved quick play currently open, or null when none is. Set
+   *  by `openQuickPlay`; `restoreQuickPlay` refuses to write into a slot that
+   *  has moved on. */
+  quickPlayId: string | null;
   /** The Quick Play whiteboard session — see `patch` below for why it is here
    *  and not in `tournaments`. */
   quickPlay: Tournament;
+  /** True once the user has changed the whiteboard in this tab. Gates both the
+   *  save (never write a sheet nobody touched) and the restore (never clobber
+   *  work the user already started). */
+  quickPlayDirty: boolean;
 };
 
 export type DemoAction =
@@ -36,7 +44,13 @@ export type DemoAction =
   | { type: "assignPlayer"; id: string; name: string }
   | { type: "resetAssignments"; id: string }
   | { type: "addRosterEntry"; id: string; entry: RosterEntry }
-  | { type: "removeRosterEntry"; id: string; name: string };
+  | { type: "removeRosterEntry"; id: string; name: string }
+  /** Binds the whiteboard slot to one saved quick play. */
+  | { type: "openQuickPlay"; id: string }
+  /** The saved sheet coming back from Supabase. Declines when the tab is
+   *  already dirty, so a slow load cannot overwrite work in progress. */
+  | { type: "restoreQuickPlay"; id: string; session: Tournament }
+  | { type: "resetQuickPlay" };
 
 /**
  * Every action but `create` funnels through here, which is what lets the Quick
@@ -54,6 +68,7 @@ function patch(
     return {
       ...state,
       quickPlay: { ...state.quickPlay, ...update(state.quickPlay) },
+      quickPlayDirty: true,
     };
   }
   return {
@@ -166,5 +181,36 @@ export function demoReducer(state: DemoState, action: DemoAction): DemoState {
     // see `removePlayer`.
     case "removeRosterEntry":
       return patch(state, action.id, (t) => removePlayer(t, action.name));
+
+    // Binding the whiteboard slot to one saved row. Unconditionally clears the
+    // slot, including for the id already open: the sync provider is remounted
+    // per id and re-reads the row, so anything left here would be stale, and a
+    // stale dirty flag would raise a conflict against a sheet this tab wrote
+    // itself. Unsaved edits are not lost — the provider flushes on unmount.
+    case "openQuickPlay":
+      return {
+        ...state,
+        quickPlayId: action.id,
+        quickPlay: createQuickPlaySession(),
+        quickPlayDirty: false,
+      };
+
+    // Restoring is not an edit, so the sheet stays clean afterwards: it matches
+    // what is already stored and there is nothing new to write back.
+    case "restoreQuickPlay":
+      // A load that resolved after the user opened a different quick play.
+      if (state.quickPlayId !== action.id) return state;
+      if (state.quickPlayDirty) return state;
+      return { ...state, quickPlay: action.session };
+
+    // Wiping is an edit — the empty sheet has to reach the stored row, or the
+    // next reload brings tonight's players back. The title survives — the row
+    // is not being deleted, only emptied.
+    case "resetQuickPlay":
+      return {
+        ...state,
+        quickPlay: createQuickPlaySession(state.quickPlay.name),
+        quickPlayDirty: true,
+      };
   }
 }

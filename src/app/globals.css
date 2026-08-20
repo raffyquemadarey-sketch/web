@@ -280,6 +280,27 @@
     -webkit-appearance: none;
     min-width: 0;
   }
+  /* A native select paints the platform's own chevron, so its glyph, size,
+     colour and inset change per OS and browser — the one piece of chrome this
+     design system doesn't own. Turn the native control off and draw the arrow
+     ourselves. It's a background image rather than an overlaid React element
+     because a <select> can't hold non-<option> children: an icon element would
+     need a positioned wrapper in the Select primitive plus pointer-events:none,
+     where a background needs no markup at all. A data: URL can't read a custom
+     property, so the stroke is the literal --color-text at the 55% .text-muted
+     uses; the palette is light-only and never reassigned, so this is the one
+     place to revisit if a dark theme is ever added. Element-qualified so text
+     inputs, the textarea and date inputs keep their own rules. */
+  select.input {
+    appearance: none;
+    -webkit-appearance: none;
+    padding-inline: 14px 34px;
+    background-image: url("data:image/svg+xml,%3csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8' viewBox='0 0 12 8' fill='none' stroke='%232a0052' stroke-opacity='.55' stroke-width='1.75' stroke-linecap='round' stroke-linejoin='round'%3e%3cpath d='m1 1.5 5 5 5-5'/%3e%3c/svg%3e");
+    background-repeat: no-repeat;
+    background-position: right 14px center;
+    background-size: 12px 8px;
+    cursor: pointer;
+  }
   .radio {
     display: inline-flex;
     align-items: center;
