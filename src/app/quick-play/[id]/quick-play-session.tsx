@@ -1,5 +1,7 @@
 "use client";
 
+import Link from "next/link";
+
 import { RosterFitNotice } from "@/components/admin/roster-fit-notice";
 import { RosterList } from "@/components/admin/roster-list";
 import { ScheduleEstimateNotice } from "@/components/admin/schedule-estimate-notice";
@@ -9,31 +11,88 @@ import { BracketView } from "@/components/bracket/bracket-view";
 import { ChampionTag } from "@/components/bracket/champion-tag";
 import { AddPlayerForm } from "@/components/forms/add-player-form";
 import { ImportPlayersForm } from "@/components/forms/import-players-form";
+import { ButtonLink } from "@/components/ui/button";
 import { PageContainer } from "@/components/ui/page-container";
 import { PageHeader } from "@/components/ui/page-header";
-import { useDemoActions, useQuickPlay } from "@/lib/demo/demo-data-provider";
+import {
+  useDemoActions,
+  useQuickPlay,
+  useQuickPlayId,
+} from "@/lib/demo/demo-data-provider";
 import { QUICK_PLAY_ID } from "@/lib/demo/quick-play";
+import { useQuickPlaySync } from "@/lib/quick-play/sync-provider";
 import { buildBracketVM } from "@/lib/tournament/bracket";
 import { makePlayerEntry } from "@/lib/tournament/roster";
 
+import { QuickPlaySaveStatus } from "./save-status";
+
 /**
  * The same controls as `ManageTournament`, over a session that was never
- * registered for and is never saved: it lives in the root layout's provider, so
- * it survives navigation and dies on reload.
+ * registered for: it lives in the root layout's provider, so it survives
+ * navigation, and `QuickPlaySyncProvider` mirrors it to its own private
+ * Supabase row so it survives a reload too. `QuickPlaySaveStatus` reports on
+ * that and carries the only control that empties the sheet.
  */
-export function QuickPlaySession() {
+export function QuickPlaySession({ sessionId }: { sessionId: string }) {
   const session = useQuickPlay();
   const actions = useDemoActions();
+  const openId = useQuickPlayId();
+  const { status } = useQuickPlaySync();
   const id = QUICK_PLAY_ID;
+
+  // The store is still bound to another quick play (or to none): the sync
+  // provider rebinds it in its first effect. Rendering the whiteboard now would
+  // flash the previous session's players. This is also what the server renders,
+  // so there is no hydration mismatch to explain away.
+  if (openId !== sessionId || status.kind === "starting") {
+    return (
+      <PageContainer>
+        <PageHeader title="Quick Play" subtitle="Opening this quick play…" />
+      </PageContainer>
+    );
+  }
+
+  // "Not yours" and "does not exist" are one case on purpose — see the RLS note
+  // in the migration. Nothing here reveals which.
+  if (status.kind === "missing" || status.kind === "off") {
+    return (
+      <PageContainer>
+        <PageHeader
+          title="We couldn't open that quick play"
+          subtitle={
+            status.kind === "off"
+              ? "This site has no Supabase project configured, so there are no saved quick plays to open."
+              : "There's no quick play at this address for this browser. Quick plays are private to the browser that made them, so a link from another device, another browser or a private window won't open here."
+          }
+        />
+        <ButtonLink href="/quick-play" variant="primary" large>
+          Back to Quick Play
+        </ButtonLink>
+      </PageContainer>
+    );
+  }
 
   const vm = buildBracketVM(session);
 
   return (
     <PageContainer>
+      <Link
+        href="/quick-play"
+        style={{
+          fontSize: "13px",
+          textDecoration: "underline",
+          display: "inline-block",
+          marginBottom: "16px",
+        }}
+      >
+        ← Quick Play
+      </Link>
       <PageHeader
-        title="Quick Play"
-        subtitle="Add players by hand, pick a format and draw a bracket. Nothing here is saved — reload the page and you get a clean sheet."
+        title={session.name}
+        subtitle="Add players, pick a format and draw a bracket. Every change saves itself to this quick play."
       />
+
+      <QuickPlaySaveStatus />
 
       <AddPlayerForm
         existingNames={session.roster.map((player) => player.name)}

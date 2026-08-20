@@ -2,8 +2,14 @@
 
 /**
  * In-memory tournament store for the demo build. Everything lives in React state
- * and resets on reload; there is no backend behind it. Reads that need to survive
- * a reload go through `@/lib/data/repository` instead.
+ * and is still the sole source of truth for rendering, so the UI never waits on
+ * a network round trip. Reads that need to survive a reload go through
+ * `@/lib/data/repository` instead.
+ *
+ * One exception to "resets on reload": the `quickPlay` slot holds whichever
+ * saved quick play is open, and `QuickPlaySyncProvider` mirrors it to that row —
+ * restoring it through `restoreQuickPlay` and writing it back as it changes.
+ * Tournaments and registrations are not persisted and still reset.
  */
 
 import { createContext, useContext, useReducer } from "react";
@@ -35,12 +41,19 @@ type DemoActions = {
   resetAssignments: (id: string) => void;
   addRosterEntry: (id: string, entry: RosterEntry) => void;
   removeRosterEntry: (id: string, name: string) => void;
+  openQuickPlay: (id: string) => void;
+  restoreQuickPlay: (id: string, session: Tournament) => void;
+  resetQuickPlay: () => void;
 };
 
 type DemoDataValue = {
   tournaments: Tournament[];
+  /** The uuid of the saved quick play currently open, or null when none is. */
+  quickPlayId: string | null;
   /** The Quick Play whiteboard, held apart from `tournaments` on purpose. */
   quickPlay: Tournament;
+  /** Whether the whiteboard has been touched in this tab — see `DemoState`. */
+  quickPlayDirty: boolean;
   getTournament: (id: string) => Tournament | null;
   actions: DemoActions;
 };
@@ -56,12 +69,16 @@ export function DemoDataProvider({
 }) {
   const [state, dispatch] = useReducer(demoReducer, {
     tournaments: initialTournaments,
+    quickPlayId: null,
     quickPlay: createQuickPlaySession(),
+    quickPlayDirty: false,
   } satisfies DemoState);
 
   const value: DemoDataValue = {
     tournaments: state.tournaments,
+    quickPlayId: state.quickPlayId,
     quickPlay: state.quickPlay,
+    quickPlayDirty: state.quickPlayDirty,
     // Searches `tournaments` only, so `QUICK_PLAY_ID` never resolves here — the
     // whiteboard is reached through `useQuickPlay()` and nothing else.
     getTournament: (id) => state.tournaments.find((t) => t.id === id) ?? null,
@@ -89,6 +106,10 @@ export function DemoDataProvider({
         dispatch({ type: "addRosterEntry", id, entry }),
       removeRosterEntry: (id, name) =>
         dispatch({ type: "removeRosterEntry", id, name }),
+      openQuickPlay: (id) => dispatch({ type: "openQuickPlay", id }),
+      restoreQuickPlay: (id, session) =>
+        dispatch({ type: "restoreQuickPlay", id, session }),
+      resetQuickPlay: () => dispatch({ type: "resetQuickPlay" }),
     },
   };
 
@@ -115,6 +136,14 @@ export function useDemoTournament(id: string): Tournament | null {
 
 export function useQuickPlay(): Tournament {
   return useDemoData().quickPlay;
+}
+
+export function useQuickPlayId(): string | null {
+  return useDemoData().quickPlayId;
+}
+
+export function useQuickPlayDirty(): boolean {
+  return useDemoData().quickPlayDirty;
 }
 
 export function useDemoActions(): DemoActions {

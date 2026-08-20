@@ -23,11 +23,13 @@ export const QUICK_PLAY_ID = "quick-play";
 
 const DEFAULT_TEAM_COUNT = 4;
 
-export function createQuickPlaySession(): Tournament {
+export function createQuickPlaySession(title: string = "Quick Play"): Tournament {
   return {
     id: QUICK_PLAY_ID,
-    // Never displayed as a title — kept for a11y and debugging only.
-    name: "Quick Play",
+    // The user's title for this quick play. Shown in the list and as the
+    // session page's heading; carried in `name` so the whole session stays one
+    // `Tournament`-shaped object.
+    name: title,
     startDate: "",
     endDate: null,
     location: "",

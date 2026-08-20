@@ -7,6 +7,11 @@ import { QUICK_PLAY_ID, createQuickPlaySession } from "./quick-play";
 import { demoReducer } from "./reducer";
 import type { DemoState } from "./reducer";
 
+/* Two saved quick plays. Row ids are uuids from Postgres, never `QUICK_PLAY_ID`
+   — that one stays the reducer's routing key and never leaves the client. */
+const OPEN_ID = "3b9d1f2a-6c4e-4f18-9a77-1d0e5c8b2a34";
+const OTHER_ID = "b17c4e0d-2f5a-4c93-8e61-7a2d4f0b9c18";
+
 function makeTournament(overrides: Partial<Tournament> = {}): Tournament {
   return {
     id: "autumn-open",
@@ -35,7 +40,9 @@ function makeTournament(overrides: Partial<Tournament> = {}): Tournament {
 function makeState(overrides: Partial<DemoState> = {}): DemoState {
   return {
     tournaments: [makeTournament()],
+    quickPlayId: null,
     quickPlay: createQuickPlaySession(),
+    quickPlayDirty: false,
     ...overrides,
   };
 }
@@ -153,5 +160,111 @@ describe("demoReducer reset semantics on the whiteboard", () => {
       courtCount: 4,
     });
     expect(next.quickPlay.decisions).toEqual({ "w-0-0": "a" });
+  });
+});
+
+describe("demoReducer quick play persistence flags", () => {
+  const saved = (): Tournament => ({
+    ...createQuickPlaySession(),
+    roster: [{ name: "Ana", role: "player", skill: "intermediate" }],
+  });
+
+  it("marks the sheet dirty on any whiteboard change", () => {
+    const next = demoReducer(makeState(), {
+      type: "addRosterEntry",
+      id: QUICK_PLAY_ID,
+      entry: { name: "Ana", role: "player", skill: "intermediate" },
+    });
+    expect(next.quickPlayDirty).toBe(true);
+  });
+
+  it("leaves the sheet clean when a real tournament changes", () => {
+    const next = demoReducer(makeState(), {
+      type: "setTeamCount",
+      id: "autumn-open",
+      teamCount: 8,
+    });
+    expect(next.quickPlayDirty).toBe(false);
+  });
+
+  it("restores a saved sheet into a clean tab without dirtying it", () => {
+    const next = demoReducer(makeState({ quickPlayId: OPEN_ID }), {
+      type: "restoreQuickPlay",
+      id: OPEN_ID,
+      session: saved(),
+    });
+
+    expect(next.quickPlay.roster.map((p) => p.name)).toEqual(["Ana"]);
+    expect(next.quickPlayDirty).toBe(false);
+  });
+
+  it("declines to restore over work already started in this tab", () => {
+    const state = makeState({ quickPlayId: OPEN_ID, quickPlayDirty: true });
+    const next = demoReducer(state, {
+      type: "restoreQuickPlay",
+      id: OPEN_ID,
+      session: saved(),
+    });
+
+    expect(next).toBe(state);
+  });
+
+  it("wipes the sheet and marks it dirty so the empty sheet gets written", () => {
+    const state = makeState({ quickPlay: saved(), quickPlayDirty: true });
+    const next = demoReducer(state, { type: "resetQuickPlay" });
+
+    expect(next.quickPlay).toEqual(createQuickPlaySession());
+    expect(next.quickPlayDirty).toBe(true);
+  });
+
+  it("keeps the title when the sheet is wiped — the row is emptied, not deleted", () => {
+    const state = makeState({
+      quickPlay: {
+        ...createQuickPlaySession("Tuesday club night"),
+        roster: [{ name: "Ana", role: "player", skill: "intermediate" }],
+      },
+      quickPlayDirty: true,
+    });
+    const next = demoReducer(state, { type: "resetQuickPlay" });
+
+    expect(next.quickPlay.name).toBe("Tuesday club night");
+    expect(next.quickPlay.roster).toEqual([]);
+  });
+});
+
+describe("demoReducer quick play slot binding", () => {
+  it("binds the slot to a saved row without touching the tournaments array", () => {
+    const state = makeState();
+    const next = demoReducer(state, { type: "openQuickPlay", id: OPEN_ID });
+
+    expect(next.quickPlayId).toBe(OPEN_ID);
+    expect(next.tournaments).toBe(state.tournaments);
+  });
+
+  it("clears the previous quick play's sheet on the way into the next one", () => {
+    const state = makeState({
+      quickPlayId: OPEN_ID,
+      quickPlay: {
+        ...createQuickPlaySession("Tuesday club night"),
+        roster: [{ name: "Ana", role: "player", skill: "intermediate" }],
+      },
+      quickPlayDirty: true,
+    });
+    const next = demoReducer(state, { type: "openQuickPlay", id: OTHER_ID });
+
+    expect(next.quickPlayId).toBe(OTHER_ID);
+    expect(next.quickPlay).toEqual(createQuickPlaySession());
+    expect(next.quickPlayDirty).toBe(false);
+  });
+
+  it("ignores a load that resolved after another quick play was opened", () => {
+    const state = makeState({ quickPlayId: OTHER_ID });
+    const next = demoReducer(state, {
+      type: "restoreQuickPlay",
+      id: OPEN_ID,
+      session: createQuickPlaySession("Tuesday club night"),
+    });
+
+    expect(next).toBe(state);
   });
 });
