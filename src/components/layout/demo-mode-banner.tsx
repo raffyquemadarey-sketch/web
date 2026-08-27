@@ -1,17 +1,17 @@
 import { getSupabaseEnv } from "@/lib/supabase/env";
 
 /**
- * Always visible, on every route. The app has auth-shaped UI but no real
- * sign-in, so it says so plainly rather than implying anything here is
+ * Always visible, on every route. Most of the app is auth-shaped UI over
+ * in-memory data, so it says so plainly rather than implying anything here is
  * protected.
  *
  * It branches because "no backend is connected" stopped being true once
  * Quick Play started saving: with credentials configured, exactly one thing on
- * the site reaches a database — the quick plays you save — and the banner has to
- * name it or it is lying on every route. Without credentials nothing does, and
- * the original wording still holds byte-for-byte. Reading the env here is a
- * plain module read of values Next inlined at build time — no request, so the
- * layout stays cacheable.
+ * the site reaches a database — the quick plays — and `/signin` is real auth
+ * against that same project, so the banner has to name both or it is lying on
+ * every route. Without credentials neither is true and the original wording
+ * still holds byte-for-byte. Reading the env here is a plain module read of
+ * values Next inlined at build time — no request, so the layout stays cacheable.
  */
 export function DemoModeBanner() {
   const configured = getSupabaseEnv() !== null;
@@ -31,10 +31,11 @@ export function DemoModeBanner() {
     >
       {configured ? (
         <>
-          <strong>Demo mode</strong> — sign-in is simulated and grants no access,
-          and tournaments and registrations live in memory and reset when you
-          reload. Quick Play is the exception: the quick plays you create there
-          are saved to private rows in Supabase that only this browser can read.
+          <strong>Demo mode</strong> — tournaments and registrations live in
+          memory and reset when you reload, and Register creates a simulated
+          account that grants no access. Quick Play is the exception, and
+          it&apos;s real: its sessions are stored in Supabase, anyone can read
+          them, and only a signed-in club admin can change them.
         </>
       ) : (
         <>

@@ -58,6 +58,7 @@ export function TournamentSettings({
   onPlayTypeChange,
   onMatchMinutesChange,
   onSessionMinutesChange,
+  disabled = false,
 }: {
   idPrefix: string;
   format: TournamentFormat;
@@ -72,6 +73,9 @@ export function TournamentSettings({
   onPlayTypeChange: (playType: PlayType) => void;
   onMatchMinutesChange: (matchMinutes: number) => void;
   onSessionMinutesChange: (sessionMinutes: number) => void;
+  /** Read-only: shown and dimmed rather than hidden, because "6 teams, doubles,
+   *  20-minute matches" is the session's shape and a viewer came for it. */
+  disabled?: boolean;
 }) {
   return (
     <>
@@ -83,6 +87,7 @@ export function TournamentSettings({
             value={format}
             options={FORMAT_OPTIONS}
             onChange={onFormatChange}
+            disabled={disabled}
           />
         </Field>
         <Field>
@@ -91,6 +96,7 @@ export function TournamentSettings({
             options={TEAM_OPTIONS}
             value={String(teamCount)}
             onChange={(event) => onTeamCountChange(Number(event.target.value))}
+            disabled={disabled}
           />
         </Field>
         <Field>
@@ -100,6 +106,7 @@ export function TournamentSettings({
             value={String(courtCount)}
             options={COURT_OPTIONS}
             onChange={(value) => onCourtCountChange(Number(value))}
+            disabled={disabled}
           />
         </Field>
         <Field>
@@ -109,6 +116,7 @@ export function TournamentSettings({
             value={playType}
             options={PLAY_TYPE_OPTIONS}
             onChange={onPlayTypeChange}
+            disabled={disabled}
           />
         </Field>
         <Field>
@@ -117,6 +125,7 @@ export function TournamentSettings({
             options={MATCH_MINUTES_SELECT_OPTIONS}
             value={String(matchMinutes)}
             onChange={(event) => onMatchMinutesChange(Number(event.target.value))}
+            disabled={disabled}
           />
         </Field>
         <Field>
@@ -125,12 +134,16 @@ export function TournamentSettings({
             options={SESSION_MINUTES_SELECT_OPTIONS}
             value={String(sessionMinutes)}
             onChange={(event) => onSessionMinutesChange(Number(event.target.value))}
+            disabled={disabled}
           />
         </Field>
       </div>
-      <p style={{ fontSize: "12.5px", opacity: 0.55, margin: "-16px 0 26px" }}>
-        Changing format, team count or play type resets results.
-      </p>
+      {/* An instruction to somebody who can change them, so it goes with them. */}
+      {disabled ? null : (
+        <p style={{ fontSize: "12.5px", opacity: 0.55, margin: "-16px 0 26px" }}>
+          Changing format, team count or play type resets results.
+        </p>
+      )}
     </>
   );
 }

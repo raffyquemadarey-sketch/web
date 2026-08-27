@@ -10,3 +10,7 @@ export function createClient() {
 
   return createBrowserClient<Database>(url, key);
 }
+
+/** The browser client's type, for helpers that take one. `createBrowserClient`
+ *  returns a per-page singleton, so this is always the same instance. */
+export type SupabaseBrowserClient = ReturnType<typeof createClient>;

@@ -5,8 +5,6 @@ import { createQuickPlaySession } from "@/lib/demo/quick-play";
 
 import { fromQuickPlayRow, toQuickPlayRow } from "./session-row";
 
-const OWNER = "6f1d5f6e-4a1b-4c2e-8f11-0b3c9d2e7a55";
-
 /* A session mid-club-night: players added, teams named, everyone drawn and a
    first round played. */
 function playedSession(): Tournament {
@@ -32,14 +30,13 @@ function playedSession(): Tournament {
 }
 
 describe("toQuickPlayRow", () => {
-  it("sends exactly the thirteen columns the client owns", () => {
-    expect(Object.keys(toQuickPlayRow(playedSession(), OWNER)).sort()).toEqual([
+  it("sends exactly the twelve columns the client owns", () => {
+    expect(Object.keys(toQuickPlayRow(playedSession())).sort()).toEqual([
       "assigned_player_names",
       "court_count",
       "decisions",
       "format",
       "match_minutes",
-      "owner",
       "play_type",
       "roster",
       "session_minutes",
@@ -54,7 +51,7 @@ describe("toQuickPlayRow", () => {
 describe("fromQuickPlayRow", () => {
   it("round-trips a played session, filler fields included", () => {
     const session = playedSession();
-    const restored = fromQuickPlayRow(toQuickPlayRow(session, OWNER));
+    const restored = fromQuickPlayRow(toQuickPlayRow(session));
 
     expect(restored).toEqual(session);
     // The id comes back from createQuickPlaySession(), not the row — it is the
@@ -65,7 +62,8 @@ describe("fromQuickPlayRow", () => {
 
   it("ignores the columns the client never sends", () => {
     const restored = fromQuickPlayRow({
-      ...toQuickPlayRow(playedSession(), OWNER),
+      ...toQuickPlayRow(playedSession()),
+      created_by: "6f1d5f6e-4a1b-4c2e-8f11-0b3c9d2e7a55",
       created_at: "2026-08-20T10:00:00.000Z",
       updated_at: "2026-08-20T10:05:00.000Z",
     });
@@ -74,29 +72,29 @@ describe("fromQuickPlayRow", () => {
   });
 
   it("rejects a format the bracket engine does not know", () => {
-    const row = { ...toQuickPlayRow(playedSession(), OWNER), format: "knockout" };
+    const row = { ...toQuickPlayRow(playedSession()), format: "knockout" };
     expect(fromQuickPlayRow(row)).toBeNull();
   });
 
   it("rejects a title that is blank or too long", () => {
-    const row = toQuickPlayRow(playedSession(), OWNER);
+    const row = toQuickPlayRow(playedSession());
     expect(fromQuickPlayRow({ ...row, title: " " })).toBeNull();
     expect(fromQuickPlayRow({ ...row, title: "x".repeat(61) })).toBeNull();
   });
 
   it("rejects an unsupported team count", () => {
-    const row = { ...toQuickPlayRow(playedSession(), OWNER), team_count: 12 };
+    const row = { ...toQuickPlayRow(playedSession()), team_count: 12 };
     expect(fromQuickPlayRow(row)).toBeNull();
   });
 
   it("rejects collections that disagree with the team count", () => {
-    const row = { ...toQuickPlayRow(playedSession(), OWNER), teams: ["Ana"] };
+    const row = { ...toQuickPlayRow(playedSession()), teams: ["Ana"] };
     expect(fromQuickPlayRow(row)).toBeNull();
   });
 
   it("rejects a recorded result that is neither side", () => {
     const row = {
-      ...toQuickPlayRow(playedSession(), OWNER),
+      ...toQuickPlayRow(playedSession()),
       decisions: { "w-0-0": "c" },
     };
     expect(fromQuickPlayRow(row)).toBeNull();

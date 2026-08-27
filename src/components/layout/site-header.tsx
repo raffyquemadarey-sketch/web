@@ -4,7 +4,11 @@ import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 
 import { Button, ButtonLink } from "@/components/ui/button";
+import { Tag } from "@/components/ui/tag";
+import { isAdmin } from "@/lib/auth/viewer";
+import { useViewer } from "@/lib/auth/viewer-provider";
 import { useDemoSession } from "@/lib/demo/demo-session-provider";
+import { createClient } from "@/lib/supabase/client";
 
 function currentFor(pathname: string, section: string): "page" | undefined {
   if (section === "/") return pathname === "/" ? "page" : undefined;
@@ -17,6 +21,13 @@ export function SiteHeader() {
   const pathname = usePathname();
   const router = useRouter();
   const { session, signOutDemo } = useDemoSession();
+  const viewer = useViewer();
+
+  /* One account cluster, and a real session wins it: an admin who also
+     registered a demo account sees Sign out rather than two ways to end a
+     session. `/dashboard` stays reachable by URL, which is all the demo flow
+     needs. */
+  const realSignedIn = viewer.kind === "signed-in";
   const signedIn = session.status === "demo-signed-in";
 
   return (
@@ -49,7 +60,28 @@ export function SiteHeader() {
       <Link href="/admin" aria-current={currentFor(pathname, "/admin")}>
         Admin
       </Link>
-      {signedIn ? (
+      {realSignedIn ? (
+        <>
+          {isAdmin(viewer) ? <Tag tone="accent">Admin</Tag> : null}
+          {/* No email: the nav wraps at 375px and an email is the one label
+              that can be arbitrarily long. Signing out for real also ends the
+              demo session, so one control ends everything this browser holds
+              and there is never a second "Log out" to hunt for. */}
+          <Button
+            variant="ghost"
+            style={{ whiteSpace: "nowrap" }}
+            onClick={() => {
+              void (async () => {
+                await createClient().auth.signOut();
+                signOutDemo();
+                router.push("/");
+              })();
+            }}
+          >
+            Sign out
+          </Button>
+        </>
+      ) : signedIn ? (
         <>
           <Link href="/dashboard" aria-current={currentFor(pathname, "/dashboard")}>
             Dashboard

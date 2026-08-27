@@ -27,12 +27,17 @@ export function TeamAssignment({
   onShuffle,
   onAssignPlayer,
   onReset,
+  readOnly = false,
 }: {
   tournament: Tournament;
   onRenameTeam: (index: number, name: string) => void;
   onShuffle: (pool: string[]) => void;
   onAssignPlayer: (name: string) => void;
   onReset: () => void;
+  /** Read-only: the team names only. All four callbacks stay required so the
+   *  prop shape is honest for the editable case — this branch simply never
+   *  mounts anything that could reach them. */
+  readOnly?: boolean;
 }) {
   const [mode, setMode] = useState<AssignMode>("custom");
 
@@ -41,6 +46,18 @@ export function TeamAssignment({
   const targetSlot = tournament.teamPlayers.findIndex(
     (players) => players.length < capacity,
   );
+
+  // Team names carry the composition — `teamDisplayName` names an assigned team
+  // after its players — so the grid is the only part a viewer must still see.
+  // Nothing that could invoke a callback exists in this tree.
+  if (readOnly) {
+    return (
+      <div style={{ marginBottom: "30px" }}>
+        <h3 style={{ fontSize: "18px", margin: "0 0 12px" }}>Teams</h3>
+        <TeamNameGrid teams={tournament.teams} onRename={onRenameTeam} readOnly />
+      </div>
+    );
+  }
 
   return (
     <div style={{ marginBottom: "30px" }}>

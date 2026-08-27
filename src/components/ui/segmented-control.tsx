@@ -15,6 +15,7 @@ export function SegmentedControl<T extends string>({
   options,
   onChange,
   columns,
+  disabled = false,
 }: {
   name: string;
   label: string;
@@ -22,6 +23,9 @@ export function SegmentedControl<T extends string>({
   options: { value: T; label: string }[];
   onChange: (value: T) => void;
   columns?: number;
+  /** Read-only: the choice is still legible, but `onChange` cannot fire — a
+   *  disabled radio does not emit one. */
+  disabled?: boolean;
 }) {
   const groupProps = useFieldGroupProps();
   const style: CSSProperties = columns
@@ -31,7 +35,15 @@ export function SegmentedControl<T extends string>({
   return (
     <>
       <FieldLabel asGroupLabel>{label}</FieldLabel>
-      <div className="seg" role="radiogroup" {...groupProps} style={style}>
+      <div
+        className="seg"
+        role="radiogroup"
+        {...groupProps}
+        // After the spread, not before: `useFieldGroupProps` growing an
+        // `aria-disabled` of its own must not silently win over this one.
+        aria-disabled={disabled || undefined}
+        style={style}
+      >
         {options.map((option) => (
           <label
             key={option.value}
@@ -43,6 +55,7 @@ export function SegmentedControl<T extends string>({
               name={name}
               value={option.value}
               checked={value === option.value}
+              disabled={disabled}
               onChange={() => onChange(option.value)}
             />
             {option.label}

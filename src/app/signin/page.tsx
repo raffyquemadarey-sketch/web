@@ -4,7 +4,7 @@ import { SignInForm } from "@/components/forms/signin-form";
 
 export const metadata: Metadata = {
   title: "Sign in",
-  description: "Sign in to see your entries and draws.",
+  description: "Club admins sign in here to create and run quick plays.",
 };
 
 export default function SignInPage() {
