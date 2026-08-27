@@ -4,6 +4,7 @@ import { DemoModeBanner } from "@/components/layout/demo-mode-banner";
 import { SiteFooter } from "@/components/layout/site-footer";
 import { SiteHeader } from "@/components/layout/site-header";
 import { SkipLink } from "@/components/layout/skip-link";
+import { ViewerProvider } from "@/lib/auth/viewer-provider";
 import { listTournaments } from "@/lib/data/repository";
 import { DemoDataProvider } from "@/lib/demo/demo-data-provider";
 import { DemoSessionProvider } from "@/lib/demo/demo-session-provider";
@@ -32,29 +33,33 @@ export default async function RootLayout(props: LayoutProps<"/">) {
     >
       <body>
         <DemoSessionProvider>
-          <DemoDataProvider initialTournaments={tournaments}>
-            <div
-              style={{
-                minHeight: "100vh",
-                display: "flex",
-                flexDirection: "column",
-              }}
-            >
-              <SkipLink />
-              <DemoModeBanner />
-              <SiteHeader />
-              <main
-                id="main"
-                /* Programmatically focusable so the skip link lands here in
-                   every browser, but never a sequential tab stop itself. */
-                tabIndex={-1}
-                style={{ flex: 1, display: "flex", flexDirection: "column" }}
+          {/* Inside the demo session, so `SiteHeader` can read both and let the
+              real one win. */}
+          <ViewerProvider>
+            <DemoDataProvider initialTournaments={tournaments}>
+              <div
+                style={{
+                  minHeight: "100vh",
+                  display: "flex",
+                  flexDirection: "column",
+                }}
               >
-                {props.children}
-              </main>
-              <SiteFooter />
-            </div>
-          </DemoDataProvider>
+                <SkipLink />
+                <DemoModeBanner />
+                <SiteHeader />
+                <main
+                  id="main"
+                  /* Programmatically focusable so the skip link lands here in
+                     every browser, but never a sequential tab stop itself. */
+                  tabIndex={-1}
+                  style={{ flex: 1, display: "flex", flexDirection: "column" }}
+                >
+                  {props.children}
+                </main>
+                <SiteFooter />
+              </div>
+            </DemoDataProvider>
+          </ViewerProvider>
         </DemoSessionProvider>
       </body>
     </html>

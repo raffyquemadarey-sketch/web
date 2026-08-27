@@ -20,16 +20,34 @@ export type Json =
 export type Database = {
   public: {
     Tables: {
+      profiles: {
+        Row: {
+          created_at: string;
+          id: string;
+          role: string;
+        };
+        Insert: {
+          created_at?: string;
+          id: string;
+          role?: string;
+        };
+        Update: {
+          created_at?: string;
+          id?: string;
+          role?: string;
+        };
+        Relationships: [];
+      };
       quick_play_sessions: {
         Row: {
           assigned_player_names: Json;
           court_count: number;
           created_at: string;
+          created_by: string | null;
           decisions: Json;
           format: string;
           id: string;
           match_minutes: number;
-          owner: string;
           play_type: string;
           roster: Json;
           session_minutes: number;
@@ -43,11 +61,11 @@ export type Database = {
           assigned_player_names?: Json;
           court_count?: number;
           created_at?: string;
+          created_by?: string | null;
           decisions?: Json;
           format?: string;
           id?: string;
           match_minutes?: number;
-          owner?: string;
           play_type?: string;
           roster?: Json;
           session_minutes?: number;
@@ -61,11 +79,11 @@ export type Database = {
           assigned_player_names?: Json;
           court_count?: number;
           created_at?: string;
+          created_by?: string | null;
           decisions?: Json;
           format?: string;
           id?: string;
           match_minutes?: number;
-          owner?: string;
           play_type?: string;
           roster?: Json;
           session_minutes?: number;
@@ -79,7 +97,12 @@ export type Database = {
       };
     };
     Views: Record<string, never>;
-    Functions: Record<string, never>;
+    Functions: {
+      is_admin: {
+        Args: Record<PropertyKey, never>;
+        Returns: boolean;
+      };
+    };
     Enums: Record<string, never>;
     CompositeTypes: Record<string, never>;
   };

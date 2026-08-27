@@ -6,13 +6,16 @@ import { Input } from "@/components/ui/input";
 import { VisuallyHidden } from "@/components/ui/visually-hidden";
 import { teamNameSchema } from "@/lib/validation/schemas";
 
-/** Editable team names. An invalid name is never committed to the bracket. */
+/** Editable team names. An invalid name is never committed to the bracket.
+ *  `readOnly` renders the same grid with the same alignment, inert. */
 export function TeamNameGrid({
   teams,
   onRename,
+  readOnly = false,
 }: {
   teams: string[];
   onRename: (index: number, name: string) => void;
+  readOnly?: boolean;
 }) {
   const [drafts, setDrafts] = useState<Record<number, string>>({});
   const [errors, setErrors] = useState<Record<number, string>>({});
@@ -49,6 +52,25 @@ export function TeamNameGrid({
     >
       {teams.map((team, index) => {
         const error = errors[index];
+
+        // Same markup, so the grid's alignment is identical. `readOnly`
+        // alongside a controlled `value` with no handler is what React asks
+        // for, and it is enough on its own: it is styled inert by
+        // `.input[readonly]` but stays focusable and selectable, where
+        // `disabled` would drop the team name out of the tab order — and the
+        // name is the one thing this branch exists to show. There is no draft
+        // and no error to show on this path.
+        if (readOnly) {
+          return (
+            <div key={index}>
+              <label>
+                <VisuallyHidden>Team {index + 1} name</VisuallyHidden>
+                <Input type="text" value={team} readOnly />
+              </label>
+            </div>
+          );
+        }
+
         return (
           <div key={index}>
             <label>

@@ -8,9 +8,9 @@ import { quickPlayTitleSchema } from "@/lib/validation/schemas";
  * The boundary between a saved quick play and the card that lists it.
  *
  * Pure on purpose — no React, no Supabase client, exactly as in `session-row`,
- * and reads are validated rather than trusted for the same reason: anyone
- * holding the publishable key can write to their own rows, so a row coming back
- * can hold anything the table's CHECK constraints allowed. `toQuickPlaySummary`
+ * and reads are validated rather than trusted for the same reason: any admin
+ * can write any row, so a row coming back can hold anything the table's CHECK
+ * constraints allowed. `toQuickPlaySummary`
  * returns `null` instead of throwing, so one unreadable row is dropped from the
  * list rather than taking the whole list down.
  */

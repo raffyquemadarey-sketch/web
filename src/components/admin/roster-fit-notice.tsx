@@ -28,13 +28,19 @@ export function RosterFitNotice({
   teamCount: number;
   /** "been added" for a hand-typed roster; omitted, it reads "registered". */
   rosterVerb?: "registered" | "been added";
-  onUseSuggestion: (teamCount: number) => void;
+  /** Omitted for a viewer who cannot resize the draw. The fit description still
+   *  renders; the suggestion sentence and its button do not, because neither is
+   *  an instruction they can act on. */
+  onUseSuggestion?: (teamCount: number) => void;
 }) {
   const fit = getRosterFit({ playerCount, playType, teamCount });
   const warning = fit.status === "overfilled" || fit.status === "underfilled";
   const suggestion = describeSuggestion(fit.suggestion);
   // Suggesting a size for an empty roster, or the size already chosen, is noise.
-  const offerSuggestion = suggestion !== null && fit.suggestion.suggested !== teamCount;
+  const offerSuggestion =
+    onUseSuggestion !== undefined &&
+    suggestion !== null &&
+    fit.suggestion.suggested !== teamCount;
 
   return (
     <CalloutPanel

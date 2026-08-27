@@ -24,9 +24,9 @@ import { quickPlayTitleSchema } from "@/lib/validation/schemas";
  * That keeps it testable in the node-environment vitest run and keeps the
  * translation in one place rather than smeared through the sync provider.
  *
- * Reads are validated rather than trusted. The publishable key lets any visitor
- * write to their own row, so a row coming back can contain anything that got
- * past the table's CHECK constraints — and `fromQuickPlayRow` returns `null`
+ * Reads are validated rather than trusted. Any admin can write any row, and
+ * rows are readable by everyone, so a row coming back can hold anything the
+ * table's CHECK constraints allowed — and `fromQuickPlayRow` returns `null`
  * instead of throwing, so a hand-edited row degrades to "start fresh" rather
  * than crashing the page.
  */
@@ -37,17 +37,14 @@ export type QuickPlaySessionInsert =
   Database["public"]["Tables"]["quick_play_sessions"]["Insert"];
 
 /**
- * Exactly the thirteen columns the client owns. `id`, `created_at` and
- * `updated_at` are never sent: on create Postgres mints the id, on save the id
- * is the `.eq("id", …)` filter rather than payload, and the table's trigger
- * maintains the timestamps so a client cannot lie about when it last wrote.
+ * Exactly the twelve columns the client owns. `id`, `created_by`, `created_at`
+ * and `updated_at` are never sent: Postgres mints the id and fills `created_by`
+ * from `auth.uid()` on insert, the id is the `.eq("id", …)` filter on save
+ * rather than payload, and the trigger maintains the timestamps so a client
+ * cannot lie about when it last wrote.
  */
-export function toQuickPlayRow(
-  session: Tournament,
-  owner: string,
-): QuickPlaySessionInsert {
+export function toQuickPlayRow(session: Tournament): QuickPlaySessionInsert {
   return {
-    owner,
     title: session.name,
     format: session.format,
     team_count: session.teamCount,
@@ -64,8 +61,8 @@ export function toQuickPlayRow(
 }
 
 /* Built from the same zod enums the forms use, so the closed sets are still
-   declared exactly once. Unknown keys — `owner`, the timestamps — are stripped
-   by zod rather than rejected. */
+   declared exactly once. Unknown keys — `created_by`, the timestamps — are
+   stripped by zod rather than rejected. */
 const quickPlayRowSchema = z
   .object({
     title: quickPlayTitleSchema,

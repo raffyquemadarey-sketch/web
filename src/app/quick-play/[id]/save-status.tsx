@@ -1,8 +1,11 @@
 "use client";
 
+import Link from "next/link";
 import { useEffect, useState } from "react";
 
 import { Button } from "@/components/ui/button";
+import { describeViewerError } from "@/lib/auth/viewer";
+import type { Viewer } from "@/lib/auth/viewer";
 import { useDemoActions } from "@/lib/demo/demo-data-provider";
 import { useQuickPlaySync } from "@/lib/quick-play/sync-provider";
 import type { QuickPlaySyncStatus } from "@/lib/quick-play/sync-status";
@@ -11,13 +14,17 @@ import type { QuickPlaySyncStatus } from "@/lib/quick-play/sync-status";
 const CONFIRM_MS = 5000;
 
 /**
- * What the sheet is doing about saving itself, plus the only way to empty it.
+ * The line above the whiteboard, in both of its versions.
  *
- * The wipe is a two-step confirm rather than `window.confirm`, which is modal,
- * unstyled and blocks the whole tab. It empties this quick play but keeps its
- * title and its row — deleting a quick play is done from the list. It doubles
- * as the resolution for `conflict`: wiping settles which sheet wins, so saving
- * can start again.
+ * `QuickPlaySaveStatus` is what an admin sees: what the sheet is doing about
+ * saving itself, plus the only way to empty it. The wipe is a two-step confirm
+ * rather than `window.confirm`, which is modal, unstyled and blocks the whole
+ * tab. It empties this quick play but keeps its title and its row — deleting a
+ * quick play is done from the list. It doubles as the resolution for
+ * `conflict`: wiping settles which sheet wins, so saving can start again.
+ *
+ * `QuickPlayViewerNote` takes the same slot for everyone else, who has nothing
+ * to save and no sheet to wipe.
  */
 function statusText(status: QuickPlaySyncStatus): string | null {
   switch (status.kind) {
@@ -27,12 +34,25 @@ function statusText(status: QuickPlaySyncStatus): string | null {
       return null;
     case "off":
       return "Saving is off — this Supabase project isn't configured.";
-    // The session UI renders its own panel for this and never mounts the
-    // status line, so there is nothing left to say here.
+    // The session UI renders its own panel for each of these and never mounts
+    // the status line, so there is nothing left to say here. `load-failed`
+    // deliberately has no sentence of its own: a status line under a whiteboard
+    // is the wrong place to admit the whiteboard is not the saved sheet.
     case "missing":
+    case "load-failed":
       return null;
+    // The opposite of `missing`: the quick play is still there, this account
+    // may just no longer change it. The sheet on screen is left exactly as the
+    // user has it — throwing their unsaved work away over a permission change
+    // would be the worst possible answer.
+    case "refused":
+      return "Not saved — this account isn't allowed to change this quick play any more, so nothing further will be saved. Your changes are still here in this tab; reload to see the saved version, and ask a club admin if you think this is wrong.";
     case "loading":
       return "Opening this quick play…";
+    // Also never mounted: the session UI renders its own "Trying again…"
+    // placeholder rather than the whiteboard this line sits under.
+    case "reloading":
+      return null;
     case "idle":
       return "This quick play will save itself as soon as you change something.";
     case "saving":
@@ -102,5 +122,43 @@ export function QuickPlaySaveStatus() {
         {armed ? "Wipe everything — press again" : "Start a clean sheet"}
       </Button>
     </div>
+  );
+}
+
+/** The same slot, for a viewer who cannot change anything. The Sign in link is
+ *  only offered to someone signed out — a signed-in member signing in again
+ *  would change nothing.
+ *
+ *  The `error` viewer gets its own sentence rather than the read-only one: the
+ *  controls are gone either way, but "only an admin can change this" would be
+ *  claiming to know something the app failed to find out. */
+export function QuickPlayViewerNote({ viewer }: { viewer: Viewer }) {
+  return (
+    <p
+      role="status"
+      style={{
+        fontSize: "13px",
+        opacity: 0.65,
+        margin: "0 0 20px",
+        maxWidth: "60ch",
+      }}
+    >
+      {viewer.kind === "error" ? (
+        describeViewerError(viewer.message)
+      ) : (
+        <>
+          You&apos;re viewing this quick play. Only a signed-in club admin can
+          add players, change settings or record results.
+          {viewer.kind === "signed-out" ? (
+            <>
+              {" "}
+              <Link href="/signin" style={{ textDecoration: "underline" }}>
+                Sign in
+              </Link>
+            </>
+          ) : null}
+        </>
+      )}
+    </p>
   );
 }

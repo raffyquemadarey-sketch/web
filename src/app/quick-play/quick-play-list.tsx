@@ -6,7 +6,8 @@ import { Button, ButtonLink } from "@/components/ui/button";
 import { CalloutPanel } from "@/components/ui/callout-panel";
 import { Card, CardKicker, CardTitle } from "@/components/ui/card";
 import { Tag } from "@/components/ui/tag";
-import { messageOf } from "@/lib/quick-play/owner";
+import { isAdmin } from "@/lib/auth/viewer";
+import { useViewer } from "@/lib/auth/viewer-provider";
 import {
   QUICK_PLAY_LIST_COLUMNS,
   toQuickPlaySummary,
@@ -14,6 +15,7 @@ import {
 import type { QuickPlaySummary } from "@/lib/quick-play/session-list";
 import { createClient } from "@/lib/supabase/client";
 import { getSupabaseEnv } from "@/lib/supabase/env";
+import { messageOf } from "@/lib/supabase/error-message";
 import { formatLabel } from "@/lib/tournament/labels";
 
 /** How long a card's delete stays armed before it forgets it was asked. */
@@ -61,10 +63,15 @@ function formatSavedAt(iso: string): string {
 }
 
 export function QuickPlayList() {
+  const admin = isAdmin(useViewer());
   // `loading` first, so the server HTML and the first client render agree.
   const [state, setState] = useState<ListState>({ kind: "loading" });
   /** One armed id for the whole list, so only one card can be armed at a time. */
   const [armedId, setArmedId] = useState<string | null>(null);
+  /** A delete that changed nothing, said out loud instead of swallowed. Kept
+   *  apart from `state` so one failed delete does not replace the whole list
+   *  with an error about loading it. */
+  const [removeFailure, setRemoveFailure] = useState<string | null>(null);
 
   useEffect(() => {
     if (!armedId) return;
@@ -84,29 +91,12 @@ export function QuickPlayList() {
         return;
       }
 
-      const supabase = createClient();
-      const claims = await supabase.auth.getClaims();
-      if (cancelled) return;
-
-      if (claims.error) {
-        setState({ kind: "error", message: claims.error.message });
-        return;
-      }
-
-      // No identity means no quick plays — and asking mints nothing, so a
-      // passive visitor still leaves no `auth.users` row behind.
-      const sub = claims.data?.claims.sub;
-      if (!sub) {
-        setState({ kind: "ready", rows: [] });
-        return;
-      }
-
-      const { data, error } = await supabase
+      // Every quick play, newest first, with no identity asked for: the select
+      // policy is `using (true)`, and one column is the whole
+      // (updated_at desc) index this order serves.
+      const { data, error } = await createClient()
         .from("quick_play_sessions")
         .select(QUICK_PLAY_LIST_COLUMNS)
-        // Redundant under RLS, but it keeps the (owner, updated_at desc) index
-        // in play and matches the provider's style.
-        .eq("owner", sub)
         .order("updated_at", { ascending: false });
       if (cancelled) return;
 
@@ -134,28 +124,47 @@ export function QuickPlayList() {
     };
   }, []);
 
-  const remove = async (id: string) => {
-    const { error } = await createClient()
-      .from("quick_play_sessions")
-      .delete()
-      .eq("id", id);
+  const remove = async (row: QuickPlaySummary) => {
+    setRemoveFailure(null);
 
-    if (error) {
-      setState({ kind: "error", message: error.message });
-      return;
+    // `count: "exact"`, for the same reason the session's write asks for it: a
+    // DELETE the delete policy declines does not error, it removes zero rows
+    // and succeeds. Without the count the card would disappear from a list it
+    // is still in, and a reload would bring it back.
+    try {
+      const { error, count } = await createClient()
+        .from("quick_play_sessions")
+        .delete({ count: "exact" })
+        .eq("id", row.id);
+
+      if (error) {
+        setRemoveFailure(`“${row.title}” wasn't deleted — ${error.message}.`);
+        return;
+      }
+
+      if (count === 0) {
+        setRemoveFailure(
+          `“${row.title}” wasn't deleted — either someone else deleted it first, or this account is no longer a club admin. Reload to see the current list.`,
+        );
+        return;
+      }
+
+      setState((current) =>
+        current.kind === "ready"
+          ? { kind: "ready", rows: current.rows.filter((it) => it.id !== row.id) }
+          : current,
+      );
+    } catch (error) {
+      // A fetch can throw rather than return an error — an unreachable host,
+      // for one — and this one is called from a click, with nothing to catch it.
+      setRemoveFailure(`“${row.title}” wasn't deleted — ${messageOf(error)}.`);
     }
-
-    setState((current) =>
-      current.kind === "ready"
-        ? { kind: "ready", rows: current.rows.filter((row) => row.id !== id) }
-        : current,
-    );
   };
 
   if (state.kind === "loading") {
     return (
       <p style={{ fontSize: "13px", opacity: 0.65 }}>
-        Looking for your saved quick plays…
+        Looking for saved quick plays…
       </p>
     );
   }
@@ -178,9 +187,9 @@ export function QuickPlayList() {
             maxWidth: "60ch",
           }}
         >
-          Quick plays are saved so you can come back to them, and this site has
-          no Supabase project configured — so there is nothing to save to and
-          nothing to list. Set NEXT_PUBLIC_SUPABASE_URL and
+          Quick plays are stored so the club can come back to them, and this
+          site has no Supabase project configured — so there is nothing to save
+          to and nothing to list. Set NEXT_PUBLIC_SUPABASE_URL and
           NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY and reload.
         </p>
       </CalloutPanel>
@@ -190,7 +199,7 @@ export function QuickPlayList() {
   if (state.kind === "error") {
     return (
       <p role="alert" style={{ fontSize: "13px", opacity: 0.8, maxWidth: "60ch" }}>
-        We couldn&apos;t load your quick plays — {state.message}. Reload to try
+        We couldn&apos;t load the quick plays — {state.message}. Reload to try
         again.
       </p>
     );
@@ -204,11 +213,17 @@ export function QuickPlayList() {
           radius="calc(var(--radius-lg) * 1.6)"
           style={{ padding: "clamp(28px, 5vw, 48px) clamp(24px, 5vw, 56px)" }}
         >
+          {/* Two empty states, because "you haven't started one" is only true
+              for the person who could have. The FEATURES grid below stays in
+              both: it explains what Quick Play is, which is exactly what a
+              first-time visitor needs either way. */}
           <Tag tone="accent-2" size="md">
-            Club night · No sign-up
+            {admin ? "Club night · Public to read" : "Club night"}
           </Tag>
           <h2 style={{ fontSize: "24px", margin: "12px 0 6px" }}>
-            Names in. Teams out. Bracket on the wall.
+            {admin
+              ? "Names in. Teams out. Bracket on the wall."
+              : "No quick plays yet"}
           </h2>
           <p
             style={{
@@ -219,14 +234,15 @@ export function QuickPlayList() {
               maxWidth: "60ch",
             }}
           >
-            You haven&apos;t started a quick play yet. Add whoever turned up,
-            split them into teams and draw a bracket — no account, no entry, no
-            setup. Each one is saved under its own title, so last Tuesday&apos;s
-            is still here when tonight&apos;s is running.
+            {admin
+              ? "You haven't started a quick play yet. Add whoever turned up, split them into teams and draw a bracket. Each one is saved under its own title and anyone can open it, so last Tuesday's is still here when tonight's is running."
+              : "Nobody has started one yet. When a club admin sets up tonight's session it'll appear here, and anyone can open it to follow the teams and the bracket."}
           </p>
-          <ButtonLink href="/quick-play/new" variant="primary" large>
-            New quick play
-          </ButtonLink>
+          {admin ? (
+            <ButtonLink href="/quick-play/new" variant="primary" large>
+              New quick play
+            </ButtonLink>
+          ) : null}
         </CalloutPanel>
 
         <div
@@ -260,57 +276,80 @@ export function QuickPlayList() {
   }
 
   return (
-    <div
-      style={{
-        display: "grid",
-        gridTemplateColumns: "repeat(auto-fit, minmax(240px, 1fr))",
-        gap: "22px",
-      }}
-    >
-      {state.rows.map((row) => (
-        <Card key={row.id} style={{ padding: "22px" }}>
-          <CardKicker>Last saved {formatSavedAt(row.updatedAt)}</CardKicker>
-          <CardTitle style={{ fontSize: "19px", margin: "4px 0 10px" }}>
-            {row.title}
-          </CardTitle>
-          <div
-            style={{
-              display: "flex",
-              gap: "6px",
-              flexWrap: "wrap",
-              marginBottom: "16px",
-            }}
-          >
-            <Tag tone="accent-2">{formatLabel(row.format)}</Tag>
-            <Tag tone="neutral">{row.teamCount} teams</Tag>
-            <Tag tone="neutral">
-              {row.playerCount} player{row.playerCount === 1 ? "" : "s"}
-            </Tag>
-          </div>
-          <ButtonLink href={`/quick-play/${row.id}`} variant="secondary" block>
-            Open
-          </ButtonLink>
-          {/* The same two-step confirm as the session page's wipe, kept local:
-              sharing it would mean rewriting `save-status.tsx`, and deleting a
-              quick play is a different enough promise to be worth its own copy. */}
-          <Button
-            variant="ghost"
-            block
-            onClick={() => {
-              if (armedId !== row.id) {
-                setArmedId(row.id);
-                return;
-              }
-              setArmedId(null);
-              void remove(row.id);
-            }}
-          >
-            {armedId === row.id
-              ? `Delete “${row.title}” — press again`
-              : "Delete"}
-          </Button>
-        </Card>
-      ))}
-    </div>
+    <>
+      {removeFailure ? (
+        <p
+          role="alert"
+          style={{
+            fontSize: "13px",
+            lineHeight: 1.6,
+            margin: "0 0 16px",
+            maxWidth: "60ch",
+            color: "var(--color-accent-800)",
+          }}
+        >
+          {removeFailure}
+        </p>
+      ) : null}
+      <div
+        style={{
+          display: "grid",
+          gridTemplateColumns: "repeat(auto-fit, minmax(240px, 1fr))",
+          gap: "22px",
+        }}
+      >
+        {state.rows.map((row) => (
+          <Card key={row.id} style={{ padding: "22px" }}>
+            <CardKicker>Last saved {formatSavedAt(row.updatedAt)}</CardKicker>
+            <CardTitle style={{ fontSize: "19px", margin: "4px 0 10px" }}>
+              {row.title}
+            </CardTitle>
+            <div
+              style={{
+                display: "flex",
+                gap: "6px",
+                flexWrap: "wrap",
+                marginBottom: "16px",
+              }}
+            >
+              <Tag tone="accent-2">{formatLabel(row.format)}</Tag>
+              <Tag tone="neutral">{row.teamCount} teams</Tag>
+              <Tag tone="neutral">
+                {row.playerCount} player{row.playerCount === 1 ? "" : "s"}
+              </Tag>
+            </div>
+            <ButtonLink href={`/quick-play/${row.id}`} variant="secondary" block>
+              Open
+            </ButtonLink>
+            {/* Hidden rather than disabled: a viewer has no path to deleting
+                anything, so a greyed-out Delete on every card is noise that
+                implies a permission they will never get.
+
+                The same two-step confirm as the session page's wipe, kept
+                local: sharing it would mean rewriting `save-status.tsx`, and
+                deleting a quick play is a different enough promise to be worth
+                its own copy. */}
+            {admin ? (
+              <Button
+                variant="ghost"
+                block
+                onClick={() => {
+                  if (armedId !== row.id) {
+                    setArmedId(row.id);
+                    return;
+                  }
+                  setArmedId(null);
+                  void remove(row);
+                }}
+              >
+                {armedId === row.id
+                  ? `Delete “${row.title}” — press again`
+                  : "Delete"}
+              </Button>
+            ) : null}
+          </Card>
+        ))}
+      </div>
+    </>
   );
 }
