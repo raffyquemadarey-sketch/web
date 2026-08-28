@@ -154,8 +154,9 @@ export function CreateQuickPlayForm() {
         </h2>
         <p style={EXPLANATION}>
           Quick plays are run by the club. Anyone can open one and follow the
-          teams and the bracket, but creating and editing them is limited to
-          admins. If you&apos;re an admin, sign in and try again.
+          teams and the bracket, but creating one is limited to admins, and only
+          the admin who created a quick play can change it. If you&apos;re an
+          admin, sign in and try again.
         </p>
         <div style={{ display: "flex", gap: "10px", flexWrap: "wrap" }}>
           {viewer.kind === "signed-out" ? (

@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import { toQuickPlaySummary } from "./session-list";
 
-/* Only the six columns `QUICK_PLAY_LIST_COLUMNS` asks for come back for a
+/* Only the seven columns `QUICK_PLAY_LIST_COLUMNS` asks for come back for a
    list — the sheet itself is never fetched to render a card. */
 function listRow(overrides: Record<string, unknown> = {}) {
   return {
@@ -15,6 +15,7 @@ function listRow(overrides: Record<string, unknown> = {}) {
       { name: "Ben", role: "player", skill: "beginner" },
     ],
     updated_at: "2026-08-20T10:05:00.000Z",
+    created_by: "6f1d5f6e-4a1b-4c2e-8f11-0b3c9d2e7a55",
     ...overrides,
   };
 }
@@ -28,7 +29,19 @@ describe("toQuickPlaySummary", () => {
       teamCount: 8,
       playerCount: 2,
       updatedAt: "2026-08-20T10:05:00.000Z",
+      createdBy: "6f1d5f6e-4a1b-4c2e-8f11-0b3c9d2e7a55",
     });
+  });
+
+  it("still lists a row that has no creator", () => {
+    // A row from before the creator-ownership migration. It lists like any
+    // other and simply offers nobody a Delete — dropping it would hide a quick
+    // play the club can still open and read.
+    expect(toQuickPlaySummary(listRow({ created_by: null }))?.createdBy).toBeNull();
+  });
+
+  it("rejects a creator id that could never name an account", () => {
+    expect(toQuickPlaySummary(listRow({ created_by: "nobody" }))).toBeNull();
   });
 
   it("rejects a format the label helper does not know", () => {

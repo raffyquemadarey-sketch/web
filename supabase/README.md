@@ -13,9 +13,11 @@ signed in or not — its title, its settings, its teams, its bracket, and its
 roster of player names. That is deliberate: the club's list and every session
 are meant to be open. Nothing that must not be public belongs in a quick play.
 
-Writing one is the opposite: creating, editing and deleting a quick play is
-limited to an account whose `public.profiles.role` is `admin`, and that is
-enforced by Row Level Security in Postgres, not by the app's UI.
+Writing one is the opposite, and it splits in two: **creating** a quick play is
+limited to any account whose `public.profiles.role` is `admin`, while **editing
+and deleting** one are limited to the single admin whose id is that row's
+`created_by` — and only for as long as that account is still an `admin`. Both
+halves are enforced by Row Level Security in Postgres, not by the app's UI.
 
 ## Applying `migrations/`
 
@@ -129,6 +131,147 @@ enforced by Row Level Security in Postgres, not by the app's UI.
      anyone holding the publishable key — it ships in the site's JavaScript —
      can `POST /auth/v1/signup` and get a real `auth.users` row plus the
      `public.profiles` row the trigger creates for it.
+
+## Applying the creator-ownership migration
+
+`migrations/20260827000000_quick_play_creator_ownership.sql` narrows editing and
+deleting a quick play from "any admin" to "the admin who created it". It is
+additive: it ALTERs the table the previous migration created rather than
+replacing it, and it is idempotent.
+
+**Prerequisite:** step 1 above must already be applied — this migration ALTERs
+`public.quick_play_sessions` and fails if that table does not exist.
+
+1. **Probe for rows with no creator, first.** The migration refuses to apply
+   while any exist.
+
+   ```sql
+   select id, title, created_by, created_at
+   from public.quick_play_sessions
+   where created_by is null;
+   ```
+
+   Expect zero rows. If there are any, note what leaving one would mean: this
+   migration makes `created_by` `not null` and keys every write on it, and no
+   account's `auth.uid()` can equal null — so a null-owner row could never be
+   edited or deleted by anybody, ever again. It is not a neutral leftover. Clear
+   them one of two ways:
+
+   ```sql
+   -- Adopt them. Replace the email with the admin who should own these rows;
+   -- that account becomes the only one that can ever edit or delete them.
+   update public.quick_play_sessions
+   set created_by = (
+     select id from auth.users where lower(email) = lower('you@example.com')
+   )
+   where created_by is null;
+   ```
+
+   ```sql
+   -- Or throw them away, if they are not worth keeping.
+   delete from public.quick_play_sessions where created_by is null;
+   ```
+2. **SQL Editor → New query**, paste the whole of
+   `migrations/20260827000000_quick_play_creator_ownership.sql`, and press
+   **Run**. Expect `Success. No rows returned.` Running it again is safe.
+
+   If it stops with:
+
+   ```
+   ERROR: public.quick_play_sessions has N row(s) with a null created_by
+   ```
+
+   then nothing was changed — that is the guard at the top refusing before any
+   ALTER ran. Clear those rows with step 1 and run it again.
+3. **Verify.** The column:
+
+   ```sql
+   select is_nullable, column_default
+   from information_schema.columns
+   where table_schema = 'public'
+     and table_name = 'quick_play_sessions'
+     and column_name = 'created_by';
+   ```
+
+   Expect `NO` and `auth.uid()`.
+
+   The foreign key:
+
+   ```sql
+   select conname, confdeltype
+   from pg_constraint
+   where conrelid = 'public.quick_play_sessions'::regclass and contype = 'f';
+   ```
+
+   Expect exactly **one** row: `quick_play_sessions_created_by_fkey`, with
+   `confdeltype` = `r` (restrict). **Zero rows is the one way this migration
+   could half-land** — the discovery loop dropped the old key and the ADD that
+   follows it did not run — and the fix is to run the migration again, which is
+   safe. Two rows cannot be the old `on delete set null` key: the loop drops
+   every single-column foreign key on `created_by` by `conkey`, whatever it is
+   named. It would be a composite or unrelated foreign key on this table, which
+   this migration does not touch and which is nothing to do with it.
+
+   The policies:
+
+   ```sql
+   select policyname, cmd, qual, with_check
+   from pg_policies
+   where schemaname = 'public' and tablename = 'quick_play_sessions'
+   order by cmd, policyname;
+   ```
+
+   Expect four: the unchanged public `SELECT`, `"Admins create quick plays"`,
+   `"Creators update their quick plays"` and `"Creators delete their quick
+   plays"`.
+
+### Deleting an account now fails while it owns quick plays
+
+This is the behaviour change nobody asked for, so it gets its own heading.
+Removing an account from **Authentication → Users** while it still owns quick
+plays aborts with:
+
+```
+update or delete on table "users" violates foreign key constraint
+"quick_play_sessions_created_by_fkey" on table "quick_play_sessions"
+```
+
+Nothing was deleted — the whole delete rolls back, so there is no half-removed
+account. Two ways through, both run before deleting the account:
+
+```sql
+-- Hand the rows to another admin. Replace both emails: the first is who should
+-- own them from now on, the second is the account being removed.
+update public.quick_play_sessions
+set created_by = (
+  select id from auth.users where lower(email) = lower('newowner@example.com')
+)
+where created_by = (
+  select id from auth.users where lower(email) = lower('departing@example.com')
+);
+```
+
+```sql
+-- Or delete them, if the club is done with those sessions.
+delete from public.quick_play_sessions
+where created_by = (
+  select id from auth.users where lower(email) = lower('departing@example.com')
+);
+```
+
+Changing `on delete restrict` to `on delete cascade` in the migration would
+instead delete those quick plays along with the account, silently. This repo
+chose `restrict` because that loss is irreversible and an error you can clear
+with one `update` is not.
+
+### Demotion freezes a demoted admin's quick plays
+
+Running `update public.profiles set role = 'member'` on an admin leaves every
+quick play they created readable by everyone and changeable by nobody — not by
+them, because the policies test `is_admin()` as well as `created_by`, and not by
+any other admin, because they test `created_by` as well as `is_admin()`. The
+only ways out are re-promoting that account, or reassigning `created_by` with
+the adopt statement above. This is intended, not an oversight.
 
 ## Regenerating `src/lib/supabase/database.types.ts`
 

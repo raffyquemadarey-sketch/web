@@ -184,9 +184,9 @@ export function demoReducer(state: DemoState, action: DemoAction): DemoState {
 
     // Binding the whiteboard slot to one saved row. Unconditionally clears the
     // slot, including for the id already open: the sync provider is remounted
-    // per id and re-reads the row, so anything left here would be stale, and a
-    // stale dirty flag would raise a conflict against a sheet this tab wrote
-    // itself. Unsaved edits are not lost — the provider flushes on unmount.
+    // per id and re-reads the row, so anything left here would be the previous
+    // session's players and a dirty flag that no longer belongs to anything.
+    // Unsaved edits are not lost — the provider flushes on unmount.
     case "openQuickPlay":
       return {
         ...state,
@@ -200,6 +200,11 @@ export function demoReducer(state: DemoState, action: DemoAction): DemoState {
     case "restoreQuickPlay":
       // A load that resolved after the user opened a different quick play.
       if (state.quickPlayId !== action.id) return state;
+      // A reducer invariant rather than a screen the app can reach: the session
+      // page keeps the whiteboard off screen until the read resolves, so there
+      // is nothing to type into while one is in flight. The rule stays here
+      // because "never overwrite work the user has started" belongs to the
+      // store, not to whichever component happens to be mounted.
       if (state.quickPlayDirty) return state;
       return { ...state, quickPlay: action.session };
 

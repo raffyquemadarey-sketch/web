@@ -31,6 +31,27 @@ export function isAdmin(viewer: Viewer): boolean {
   return viewer.kind === "signed-in" && viewer.role === "admin";
 }
 
+/**
+ * Whether this viewer may change the thing `createdBy` belongs to.
+ *
+ * A mirror of the update and delete policies on `quick_play_sessions`, which
+ * read `is_admin() and created_by = auth.uid()`. Both halves matter: an admin
+ * who is demoted keeps their id on every row they created, and the policy stops
+ * matching them, so this has to stop too or the page would offer edits Postgres
+ * silently drops — RLS refuses by matching zero rows, not by erroring.
+ *
+ * `createdBy` is nullable because rows are validated rather than trusted, and
+ * because it is also `null` before a session's row has loaded. Both mean the
+ * same thing here: not yours.
+ *
+ * Cosmetic, exactly like `isAdmin`. The policies are the control.
+ */
+export function isOwner(viewer: Viewer, createdBy: string | null): boolean {
+  if (createdBy === null) return false;
+  if (viewer.kind !== "signed-in") return false;
+  return isAdmin(viewer) && viewer.userId === createdBy;
+}
+
 /** Narrows the generated `profiles.role` column — a plain `string` — without a
  *  cast. Anything that is not exactly `"admin"`, a missing row included, is a
  *  member, so an account the trigger never saw is read-only rather than broken. */
@@ -50,6 +71,40 @@ export function toViewerRole(role: string | null | undefined): ViewerRole {
  */
 export function describeViewerError(message: string): string {
   return `We couldn't check your account — ${message}. Nothing on this page can be changed or created until we can; reload to try again.`;
+}
+
+/**
+ * The name to show for an account, given the only identity we hold.
+ *
+ * Supabase gives us an email and nothing else — no display name, no profile
+ * name — so the local-part is the closest thing to what the account calls
+ * itself. An account whose email claim is absent still has to read as signed
+ * in, because it is.
+ */
+export function accountName(email: string | null): string {
+  const local = email?.split("@")[0]?.trim() ?? "";
+  return local === "" ? "Signed in" : local;
+}
+
+/**
+ * The one or two letters that stand in for the account in the avatar.
+ *
+ * `first.last` should read `FL`, not `FI`, so a separated local-part is treated
+ * as words; an unseparated one has no word boundary to find, so its first two
+ * characters are the best available guess. Never empty — an avatar with no
+ * glyph in it looks broken rather than anonymous.
+ */
+export function accountInitials(email: string | null): string {
+  const local = email?.split("@")[0]?.trim() ?? "";
+  const parts = local.split(/[._+-]+/).filter((part) => part !== "");
+
+  if (parts.length >= 2) {
+    return `${parts[0][0]}${parts[1][0]}`.toUpperCase();
+  }
+  if (parts.length === 1) {
+    return parts[0].slice(0, 2).toUpperCase();
+  }
+  return "?";
 }
 
 /**

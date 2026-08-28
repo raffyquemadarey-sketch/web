@@ -1,16 +1,23 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  accountInitials,
+  accountName,
   describeSignInError,
   describeViewerError,
   isAdmin,
+  isOwner,
   toViewerRole,
 } from "./viewer";
 import type { Viewer } from "./viewer";
 
+/* Named rather than read back off `SIGNED_IN_ADMIN`: that fixture is annotated
+   `Viewer`, and the union has arms without a `userId` to read. */
+const OWNER_ID = "6f1d5f6e-4a1b-4c2e-8f11-0b3c9d2e7a55";
+
 const SIGNED_IN_ADMIN: Viewer = {
   kind: "signed-in",
-  userId: "6f1d5f6e-4a1b-4c2e-8f11-0b3c9d2e7a55",
+  userId: OWNER_ID,
   email: "admin@example.com",
   role: "admin",
 };
@@ -40,6 +47,40 @@ describe("isAdmin", () => {
     // the role read failed, would offer an edit the database is going to refuse.
     expect(isAdmin({ kind: "loading" })).toBe(false);
     expect(isAdmin({ kind: "error", message: "network unreachable" })).toBe(false);
+  });
+});
+
+describe("isOwner", () => {
+  it("is true for the admin whose id is on the row", () => {
+    expect(isOwner(SIGNED_IN_ADMIN, OWNER_ID)).toBe(true);
+  });
+
+  it("refuses an admin who did not create this one", () => {
+    // The whole point of the change: being an admin is no longer enough.
+    expect(isOwner(SIGNED_IN_ADMIN, "0b3c9d2e-7a55-4c2e-8f11-6f1d5f6e4a1b")).toBe(
+      false,
+    );
+  });
+
+  it("refuses the creator once they have been demoted", () => {
+    // The frozen-row model, asserted: the id still matches, the role no longer
+    // does, and the update policy tests both — so nobody can change this row.
+    expect(isOwner(SIGNED_IN_MEMBER, OWNER_ID)).toBe(false);
+  });
+
+  it("refuses a row with no creator", () => {
+    // Both meanings of `null` — a row from before the creator-ownership
+    // migration, and a session whose row has not loaded yet.
+    expect(isOwner(SIGNED_IN_ADMIN, null)).toBe(false);
+  });
+
+  it("refuses every viewer that is not a resolved, signed-in account", () => {
+    expect(isOwner({ kind: "loading" }, OWNER_ID)).toBe(false);
+    expect(isOwner({ kind: "error", message: "network unreachable" }, OWNER_ID)).toBe(
+      false,
+    );
+    expect(isOwner({ kind: "signed-out" }, OWNER_ID)).toBe(false);
+    expect(isOwner({ kind: "unconfigured" }, OWNER_ID)).toBe(false);
   });
 });
 
@@ -75,6 +116,51 @@ describe("toViewerRole", () => {
     // A missing `profiles` row — an account created before the trigger existed.
     expect(toViewerRole(null)).toBe("member");
     expect(toViewerRole(undefined)).toBe("member");
+  });
+});
+
+describe("accountName", () => {
+  it("uses the email's local-part as the account's name", () => {
+    expect(accountName("clubadmin08@example.com")).toBe("clubadmin08");
+    expect(accountName("first.last@club.org")).toBe("first.last");
+  });
+
+  it("still reads as signed in when there is no email to show", () => {
+    // An account whose email claim is absent is signed in all the same, so the
+    // name line must not go blank.
+    expect(accountName(null)).toBe("Signed in");
+    expect(accountName("@gmail.com")).toBe("Signed in");
+  });
+});
+
+describe("accountInitials", () => {
+  it("takes one letter per word when the local-part is separated", () => {
+    expect(accountInitials("first.last@x.com")).toBe("FL");
+    expect(accountInitials("user+news@x.com")).toBe("UN");
+  });
+
+  it("treats every separator in the class as a word boundary", () => {
+    // `-` earns its own case: its position in the character class is what
+    // decides between a literal and a range. Written as `[.-_+]` the class
+    // becomes "`.` through `_`" — digits and capitals swept in, and `-` itself
+    // (0x2D, below `.`) dropped — so this pair is what would fail.
+    expect(accountInitials("first-last@x.com")).toBe("FL");
+    expect(accountInitials("first_last@x.com")).toBe("FL");
+  });
+
+  it("falls back to the first two characters when there is no word boundary", () => {
+    expect(accountInitials("clubadmin08@example.com")).toBe("CL");
+  });
+
+  it("copes with a local-part shorter than two characters", () => {
+    expect(accountInitials("a@x.com")).toBe("A");
+  });
+
+  it("never renders an empty avatar", () => {
+    // A circle with nothing in it reads as a broken image rather than as an
+    // account we know nothing about.
+    expect(accountInitials(null)).toBe("?");
+    expect(accountInitials("@x.com")).toBe("?");
   });
 });
 

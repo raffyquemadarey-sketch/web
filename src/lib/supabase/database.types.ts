@@ -43,7 +43,7 @@ export type Database = {
           assigned_player_names: Json;
           court_count: number;
           created_at: string;
-          created_by: string | null;
+          created_by: string;
           decisions: Json;
           format: string;
           id: string;
@@ -61,7 +61,7 @@ export type Database = {
           assigned_player_names?: Json;
           court_count?: number;
           created_at?: string;
-          created_by?: string | null;
+          created_by?: string;
           decisions?: Json;
           format?: string;
           id?: string;
@@ -79,7 +79,7 @@ export type Database = {
           assigned_player_names?: Json;
           court_count?: number;
           created_at?: string;
-          created_by?: string | null;
+          created_by?: string;
           decisions?: Json;
           format?: string;
           id?: string;
