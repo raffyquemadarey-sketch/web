@@ -32,10 +32,10 @@ export function DemoModeBanner() {
       {configured ? (
         <>
           <strong>Demo mode</strong> — tournaments and registrations live in
-          memory and reset when you reload, and Register creates a simulated
+          memory and reset when you reload, and signing up creates a simulated
           account that grants no access. Quick Play is the exception, and
           it&apos;s real: its sessions are stored in Supabase, anyone can read
-          them, and only a signed-in club admin can change them.
+          them, and only the club admin who created one can change it.
         </>
       ) : (
         <>

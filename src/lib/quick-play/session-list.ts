@@ -23,12 +23,17 @@ export type QuickPlaySummary = {
   playerCount: number;
   /** The row's `updated_at`, verbatim. Formatted for display by the list. */
   updatedAt: string;
+  /** The row's creator, the only account that may delete it; `null` only for a
+   *  row that predates the creator-ownership migration, which the card renders
+   *  read-only rather than hiding. */
+  createdBy: string | null;
 };
 
-/** Exactly the columns the list card renders — the roster is fetched only to
- *  count it, so nothing else about a saved sheet crosses the wire for a list. */
+/** Exactly the columns the list card renders, plus one it does not — the roster
+ *  is fetched only to count it, and `created_by` only to decide whether Delete
+ *  renders, so nothing else about a saved sheet crosses the wire for a list. */
 export const QUICK_PLAY_LIST_COLUMNS =
-  "id, title, format, team_count, roster, updated_at";
+  "id, title, format, team_count, roster, updated_at, created_by";
 
 const quickPlaySummarySchema = z.object({
   id: z.uuid(),
@@ -38,6 +43,7 @@ const quickPlaySummarySchema = z.object({
   // Only its length is used, so the entries themselves are never inspected.
   roster: z.array(z.unknown()),
   updated_at: z.string(),
+  created_by: z.uuid().nullable(),
 });
 
 /** `null` for anything the list cannot render — `formatLabel` takes a narrowed
@@ -57,5 +63,6 @@ export function toQuickPlaySummary(row: unknown): QuickPlaySummary | null {
     teamCount: data.team_count,
     playerCount: data.roster.length,
     updatedAt: data.updated_at,
+    createdBy: data.created_by,
   };
 }

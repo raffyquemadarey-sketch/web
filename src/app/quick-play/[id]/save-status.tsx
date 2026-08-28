@@ -4,7 +4,7 @@ import Link from "next/link";
 import { useEffect, useState } from "react";
 
 import { Button } from "@/components/ui/button";
-import { describeViewerError } from "@/lib/auth/viewer";
+import { describeViewerError, isAdmin } from "@/lib/auth/viewer";
 import type { Viewer } from "@/lib/auth/viewer";
 import { useDemoActions } from "@/lib/demo/demo-data-provider";
 import { useQuickPlaySync } from "@/lib/quick-play/sync-provider";
@@ -16,28 +16,32 @@ const CONFIRM_MS = 5000;
 /**
  * The line above the whiteboard, in both of its versions.
  *
- * `QuickPlaySaveStatus` is what an admin sees: what the sheet is doing about
- * saving itself, plus the only way to empty it. The wipe is a two-step confirm
- * rather than `window.confirm`, which is modal, unstyled and blocks the whole
- * tab. It empties this quick play but keeps its title and its row — deleting a
- * quick play is done from the list. It doubles as the resolution for
- * `conflict`: wiping settles which sheet wins, so saving can start again.
+ * `QuickPlaySaveStatus` is what the creating admin sees: what the sheet is doing
+ * about saving itself, plus the only way to empty it. The wipe is a two-step
+ * confirm rather than `window.confirm`, which is modal, unstyled and blocks the
+ * whole tab. It empties this quick play but keeps its title and its row —
+ * deleting a quick play is done from the list. Emptying it is an edit like any
+ * other, so the empty sheet saves itself the same way.
  *
  * `QuickPlayViewerNote` takes the same slot for everyone else, who has nothing
  * to save and no sheet to wipe.
  */
 function statusText(status: QuickPlaySyncStatus): string | null {
   switch (status.kind) {
-    // Before the first effect runs there is nothing true to say, and saying
-    // nothing is what keeps server and client HTML identical.
+    // Nothing of this quick play is on screen yet, this line included: the
+    // session UI renders a header on its own until the read resolves — see
+    // `isOpening` — so there is no whiteboard for a status to be about.
     case "starting":
+    case "loading":
+    case "reloading":
       return null;
-    case "off":
-      return "Saving is off — this Supabase project isn't configured.";
     // The session UI renders its own panel for each of these and never mounts
-    // the status line, so there is nothing left to say here. `load-failed`
-    // deliberately has no sentence of its own: a status line under a whiteboard
-    // is the wrong place to admit the whiteboard is not the saved sheet.
+    // the status line either, so there is nothing left to say here. `off` and
+    // `missing` both mean there is no quick play at this address to report on;
+    // `load-failed` deliberately has no sentence of its own, because a status
+    // line under a whiteboard is the wrong place to admit the whiteboard is not
+    // the saved sheet.
+    case "off":
     case "missing":
     case "load-failed":
       return null;
@@ -46,30 +50,20 @@ function statusText(status: QuickPlaySyncStatus): string | null {
     // user has it — throwing their unsaved work away over a permission change
     // would be the worst possible answer.
     case "refused":
-      return "Not saved — this account isn't allowed to change this quick play any more, so nothing further will be saved. Your changes are still here in this tab; reload to see the saved version, and ask a club admin if you think this is wrong.";
-    case "loading":
-      return "Opening this quick play…";
-    // Also never mounted: the session UI renders its own "Trying again…"
-    // placeholder rather than the whiteboard this line sits under.
-    case "reloading":
-      return null;
-    case "idle":
-      return "This quick play will save itself as soon as you change something.";
+      return "Not saved — this account can no longer change this quick play, so nothing further will be saved. That happens if your admin access was removed, or if this quick play belongs to another admin. Your changes are still here in this tab; reload to see the saved version, and ask a club admin if you think this is wrong.";
     case "saving":
       return "Saving…";
+    // Also what a finished load leaves behind, and true of both: the sheet on
+    // screen is the sheet in the row.
     case "saved":
       return "Saved.";
-    // Three things, because leaving any of them out strands the user: the
-    // saved sheet survived, this tab is not saving, and here are both exits.
-    case "conflict":
-      return "This quick play finished loading after you'd already started changing it, so what was saved was left alone — and nothing in this tab is being saved right now. Reload to pick up the saved version, or use Start a clean sheet to clear this one and save from here.";
     case "error":
       return `Not saved — ${status.message}. This quick play still works in this tab, and it will try again on your next change.`;
   }
 }
 
 export function QuickPlaySaveStatus() {
-  const { status, resolveConflict } = useQuickPlaySync();
+  const { status } = useQuickPlaySync();
   const actions = useDemoActions();
   const [armed, setArmed] = useState(false);
 
@@ -112,11 +106,6 @@ export function QuickPlaySaveStatus() {
           }
           setArmed(false);
           actions.resetQuickPlay();
-          // Second half of the wipe: emptying the sheet is only half an exit
-          // from `conflict` — without this the status stays there, saving
-          // stays off and the button does nothing you can see. A no-op in
-          // every other status, so it is unconditional here.
-          resolveConflict();
         }}
       >
         {armed ? "Wipe everything — press again" : "Start a clean sheet"}
@@ -131,7 +120,16 @@ export function QuickPlaySaveStatus() {
  *
  *  The `error` viewer gets its own sentence rather than the read-only one: the
  *  controls are gone either way, but "only an admin can change this" would be
- *  claiming to know something the app failed to find out. */
+ *  claiming to know something the app failed to find out.
+ *
+ *  The middle branch relies on where this is mounted, and on nothing else being
+ *  true there. The session page renders it only when `canEdit` is false and only
+ *  once the row has been read — it shows a header and nothing else while
+ *  `isOpening` holds — so `createdBy` is a real account id by the time this
+ *  renders, and an `isAdmin` viewer reaching it is precisely an admin who did
+ *  not create this quick play. Both halves are load-bearing: without the second,
+ *  the admin who *did* create it would read this sentence for the length of the
+ *  read, on every navigation into their own session. */
 export function QuickPlayViewerNote({ viewer }: { viewer: Viewer }) {
   return (
     <p
@@ -145,10 +143,12 @@ export function QuickPlayViewerNote({ viewer }: { viewer: Viewer }) {
     >
       {viewer.kind === "error" ? (
         describeViewerError(viewer.message)
+      ) : isAdmin(viewer) ? (
+        "You're a club admin, but another admin created this quick play — only they can add players, change settings or record results. You can follow the teams and the bracket here, and start your own from Quick Play."
       ) : (
         <>
-          You&apos;re viewing this quick play. Only a signed-in club admin can
-          add players, change settings or record results.
+          You&apos;re viewing this quick play. Only the club admin who created it
+          can add players, change settings or record results.
           {viewer.kind === "signed-out" ? (
             <>
               {" "}

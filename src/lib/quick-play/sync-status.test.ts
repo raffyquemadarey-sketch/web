@@ -4,7 +4,7 @@ import { createQuickPlaySession } from "@/lib/demo/quick-play";
 import { demoReducer } from "@/lib/demo/reducer";
 import type { DemoState } from "@/lib/demo/reducer";
 
-import { canSave, clearConflict } from "./sync-status";
+import { canSave, isOpening } from "./sync-status";
 import type { QuickPlaySyncStatus } from "./sync-status";
 
 const EVERY_STATUS: QuickPlaySyncStatus[] = [
@@ -12,10 +12,8 @@ const EVERY_STATUS: QuickPlaySyncStatus[] = [
   { kind: "off" },
   { kind: "loading" },
   { kind: "reloading" },
-  { kind: "idle" },
   { kind: "saving" },
   { kind: "saved" },
-  { kind: "conflict" },
   { kind: "missing" },
   { kind: "refused" },
   { kind: "load-failed", message: "permission denied for table quick_play_sessions" },
@@ -28,11 +26,6 @@ describe("canSave", () => {
     // changed this, every save would schedule the next one.
     expect(canSave({ kind: "saving" }, true)).toBe(true);
     expect(canSave({ kind: "saved" }, true)).toBe(true);
-    expect(canSave({ kind: "idle" }, true)).toBe(true);
-  });
-
-  it("refuses to write while a saved sheet is unresolved", () => {
-    expect(canSave({ kind: "conflict" }, true)).toBe(false);
   });
 
   it("refuses to write before anything has loaded, or when nothing can", () => {
@@ -68,38 +61,57 @@ describe("canSave", () => {
   });
 });
 
-describe("canSave, for a viewer who is not an admin", () => {
-  it("refuses every status, the four that would otherwise save included", () => {
-    /* An admin-gated write is refused by RLS by matching zero rows rather than
-       by erroring, which the provider would read back as "this quick play was
-       deleted". So no write may be attempted at all — not even from `idle`. */
+describe("canSave, for a viewer who may not write this quick play", () => {
+  it("refuses every status, the three that would otherwise save included", () => {
+    /* Two ways to land here: not an admin at all, or an admin who did not
+       create this one. Either way the write is refused by RLS by matching zero
+       rows rather than by erroring, which the provider would read back as "this
+       quick play was deleted". So no write may be attempted at all — not even
+       from `saved`. */
     for (const status of EVERY_STATUS) {
       expect(canSave(status, false)).toBe(false);
     }
   });
 });
 
-describe("clearConflict", () => {
-  it("moves a conflicted tab back into a status that saves", () => {
-    const resolved = clearConflict({ kind: "conflict" });
-
-    expect(resolved).toEqual({ kind: "idle" });
-    expect(canSave(resolved, true)).toBe(true);
+describe("isOpening", () => {
+  it("holds until the read resolves, so no blank sheet is shown as this session", () => {
+    /* The sheet in memory during all three is `createQuickPlaySession()`, and
+       `created_by` has not arrived either — so the session page can neither draw
+       the whiteboard nor say who is allowed to change it. */
+    expect(isOpening({ kind: "starting" })).toBe(true);
+    expect(isOpening({ kind: "loading" })).toBe(true);
+    expect(isOpening({ kind: "reloading" })).toBe(true);
   });
 
-  it("returns the same object for every other status, so React bails out", () => {
+  it("lets the page through once a status describes this quick play", () => {
+    /* Including the three that render a panel of their own rather than the
+       whiteboard: they are answers about this row, not the absence of one. */
     for (const status of EVERY_STATUS) {
-      if (status.kind === "conflict") continue;
-      expect(clearConflict(status)).toBe(status);
+      if (status.kind === "starting") continue;
+      if (status.kind === "loading") continue;
+      if (status.kind === "reloading") continue;
+      expect(isOpening(status)).toBe(false);
+    }
+  });
+
+  it("never overlaps with a status that saves", () => {
+    /* The two gates read the same fact from opposite ends: while none of this
+       quick play is on screen, nothing can be written to it either — so the
+       blank default behind an unfinished read can never reach the row. */
+    for (const status of EVERY_STATUS) {
+      if (!isOpening(status)) continue;
+      expect(canSave(status, true)).toBe(false);
     }
   });
 });
 
-describe("the clean-sheet exit from conflict", () => {
+describe("the clean-sheet wipe", () => {
   it("empties the sheet and leaves it savable, so the wipe reaches Postgres", () => {
-    /* The state a tab is in once a saved row arrived too late: work of its own
-       on the whiteboard, and saving stopped to protect the saved sheet. */
-    const conflicted: DemoState = {
+    /* A loaded session with tonight's players on it, which is the only state the
+       wipe is offered from: the button rides with the status line, and that is
+       rendered for the creating admin alone. */
+    const loaded: DemoState = {
       tournaments: [],
       quickPlayId: "3b9d1f2a-6c4e-4f18-9a77-1d0e5c8b2a34",
       quickPlay: {
@@ -108,19 +120,14 @@ describe("the clean-sheet exit from conflict", () => {
       },
       quickPlayDirty: true,
     };
-    const status: QuickPlaySyncStatus = { kind: "conflict" };
-    expect(canSave(status, true)).toBe(false);
+    const status: QuickPlaySyncStatus = { kind: "saved" };
 
-    // Both halves of one click: `resetQuickPlay` from the reducer,
-    // `resolveConflict` — which is `setStatus(clearConflict)` — from the sync
-    // provider.
-    const wiped = demoReducer(conflicted, { type: "resetQuickPlay" });
-    const resolved = clearConflict(status);
+    const wiped = demoReducer(loaded, { type: "resetQuickPlay" });
 
     expect(wiped.quickPlay).toEqual(createQuickPlaySession());
     // Dirty and savable together are what schedule the write; either one alone
-    // is the dead control this replaced.
+    // leaves an emptied sheet that comes back on the next reload.
     expect(wiped.quickPlayDirty).toBe(true);
-    expect(canSave(resolved, true)).toBe(true);
+    expect(canSave(status, true)).toBe(true);
   });
 });

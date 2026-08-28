@@ -7,16 +7,16 @@
  * instant and persistence trails it. Writes are debounced whole-row updates,
  * serialised through a promise chain so they land in Postgres in the order they
  * were made; the conflict model is deliberately last-write-wins, one row per
- * quick play, no merge. The one case that is not last-write-wins is a saved row
- * arriving after the user has already started typing: that pauses saving in
- * `conflict` rather than picking a winner, and the user resolves it by
- * reloading or by wiping the sheet.
+ * quick play, no merge. There is no sheet to lose to a late-arriving row: the
+ * session page shows nothing but a header until the read resolves, so nobody can
+ * be typing while it is in flight.
  *
- * The row is neither owner-scoped nor private: anyone can read it, signed in or
- * not, and only an admin can write it. Loading therefore asks for no identity
- * at all. Whether this tab writes is `canSave(status, admin)`, and the admin
- * half of that comes from `ViewerProvider` — cosmetic, like every other check in
- * the browser; the update policy is what actually refuses a non-admin.
+ * The row is not private: anyone can read it, signed in or not, and only the
+ * admin who created it can write it. Loading therefore asks for no identity at
+ * all. Whether this tab writes is `canSave(status, isOwner(viewer, createdBy))`,
+ * whose viewer half comes from `ViewerProvider` and whose owner half comes from
+ * the loaded row — cosmetic, like every other check in the browser; the update
+ * policy is what actually refuses a non-admin.
  *
  * Every failure path says so on screen, and the two halves say different things.
  * A write that fails degrades to "in memory, and say so": the sheet on screen is
@@ -29,7 +29,7 @@
 import { createContext, useContext, useEffect, useRef, useState } from "react";
 import type { ReactNode } from "react";
 
-import { isAdmin } from "@/lib/auth/viewer";
+import { isOwner } from "@/lib/auth/viewer";
 import { useViewer } from "@/lib/auth/viewer-provider";
 import type { Tournament } from "@/lib/data/types";
 import {
@@ -43,7 +43,7 @@ import { getSupabaseEnv } from "@/lib/supabase/env";
 import { messageOf } from "@/lib/supabase/error-message";
 
 import { fromQuickPlayRow, toQuickPlayRow } from "./session-row";
-import { canSave, clearConflict } from "./sync-status";
+import { canSave } from "./sync-status";
 import type { QuickPlaySyncStatus } from "./sync-status";
 
 /** Long enough that typing a team name is one request, short enough to feel live. */
@@ -51,14 +51,16 @@ const SAVE_DEBOUNCE_MS = 800;
 
 type QuickPlaySyncValue = {
   status: QuickPlaySyncStatus;
-  /** Abandons a saved sheet the tab declined to load, so writes resume. The
-   *  caller is expected to have emptied the whiteboard first — see the wipe in
-   *  `QuickPlaySaveStatus`, which is the only place this is called from. */
-  resolveConflict: () => void;
   /** Runs the initial read again after it failed. A no-op in every other
    *  status, so it can never re-read over a sheet that did load — least of all
-   *  over the unsaved work a `refused` or `conflict` tab is holding. */
+   *  over the unsaved work a `refused` tab is holding. */
   retryLoad: () => void;
+  /** Who created this quick play, once the row has been read. `QuickPlaySession`
+   *  uses it to gate every editing control and, when an admin does not own this
+   *  one, to say so instead of implying they are not an admin. `null` until the
+   *  read resolves, which is why that page renders none of those controls and
+   *  none of those sentences while `isOpening` holds. */
+  createdBy: string | null;
 };
 
 const QuickPlaySyncContext = createContext<QuickPlaySyncValue | null>(null);
@@ -96,8 +98,9 @@ async function writeSession(
 
     // Zero rows has two causes and they want opposite screens. The row was
     // deleted — or the update policy declined this account, which does not
-    // error, it just matches nothing. `admin` in the provider is a cached role
-    // that can go stale mid-session, so the second case is real. Reads are
+    // error, it just matches nothing. The provider's own gate is a cached role
+    // and a cached creator id, either of which can go stale mid-session, so the
+    // second case is real. Reads are
     // public, so re-reading the id settles it, and only ever on this rare path:
     // an ordinary save is still one request.
     const reread = await supabase
@@ -123,7 +126,7 @@ export function QuickPlaySyncProvider({
   const session = useQuickPlay();
   const dirty = useQuickPlayDirty();
   const actions = useDemoActions();
-  const admin = isAdmin(useViewer());
+  const viewer = useViewer();
 
   // `starting` renders nothing, so the server HTML and the first client render
   // agree and there is no hydration mismatch to explain away.
@@ -131,12 +134,16 @@ export function QuickPlaySyncProvider({
   /** Bumped by `retryLoad`, and read by nothing but the load effect's
    *  dependency array — incrementing it is what runs the read again. */
   const [attempt, setAttempt] = useState(0);
+  /** The row's `created_by`, read once by the load below. `null` until then, and
+   *  for a row that never loaded, which `isOwner` already reads as "not yours". */
+  const [createdBy, setCreatedBy] = useState<string | null>(null);
 
-  /* Whether either writer below may run. False for everyone who is not an
-     admin, and false in `conflict`, which is what stops this tab writing over a
-     saved sheet it declined to load — and why `resolveConflict` exists at all.
-     See `./sync-status` for why it stays true across `saving` and `saved`. */
-  const savable = canSave(status, admin);
+  /* Whether either writer below may run. False for everyone who is not the
+     admin who created this quick play, and false until the read that names them
+     resolves. The update policy is the control; this only decides whether a
+     request is worth making. See `./sync-status` for why it stays true across
+     `saving` and `saved`. */
+  const savable = canSave(status, isOwner(viewer, createdBy));
 
   const latest = useRef({ session, dirty, actions, savable });
   /** The last session object successfully written. Reference equality against
@@ -147,8 +154,8 @@ export function QuickPlaySyncProvider({
   // No dependency array on purpose: the mount-only effects below never see a
   // fresh closure, so this is what keeps what they read current.
   useEffect(() => {
-    // Not `admin`: `savable` already folds it in, and a second copy of the same
-    // fact would read like the gate without being one.
+    // Not the viewer or `createdBy`: `savable` already folds both in, and a
+    // second copy of the same fact would read like the gate without being one.
     latest.current = { session, dirty, actions, savable };
   });
 
@@ -211,15 +218,11 @@ export function QuickPlaySyncProvider({
         return;
       }
 
-      // The user started a sheet while the row was still in flight. Neither one
-      // is thrown away silently — `restoreQuickPlay` declines, saving stops,
-      // and the status line offers the two exits: reload to take the saved
-      // sheet, or wipe to take this one (`resolveConflict`).
-      if (latest.current.dirty) {
-        setStatus({ kind: "conflict" });
-        return;
-      }
-
+      // The sheet, its creator and the status in one batch, so there is no
+      // render in between where this quick play is on screen but the account
+      // that owns it is not yet known. That render is the one that would tell
+      // the admin who created it that somebody else did.
+      setCreatedBy(data.created_by);
       latest.current.actions.restoreQuickPlay(sessionId, restored);
       savedRef.current = restored;
       setStatus({ kind: "saved" });
@@ -227,7 +230,7 @@ export function QuickPlaySyncProvider({
 
     // A fetch can throw rather than return an error — an unreachable host, for
     // one. An unhandled rejection here would surface as a console throw on a
-    // page showing a whiteboard that is not this quick play.
+    // page left saying "Opening this quick play…" forever.
     void load().catch((error: unknown) => {
       if (!cancelled) setStatus({ kind: "load-failed", message: messageOf(error) });
     });
@@ -281,14 +284,11 @@ export function QuickPlaySyncProvider({
 
       const snapshot = latest.current.session;
       // The same gate the debounced write is under, read through the ref
-      // because this effect is mount-only. It carries three jobs: nothing is
+      // because this effect is mount-only. It carries two jobs: nothing is
       // written unless a load finished (`savable` is false in `starting`,
       // `loading`, `reloading` and `load-failed`, so the blank sheet behind a
-      // failed read can never be flushed over the saved one), nothing is
-      // written by a viewer who is not an admin, and
-      // switching tabs during a `conflict` does not write the very sheet the
-      // conflict is refusing to write — which would make the status line's
-      // "nothing is being saved" a lie.
+      // failed read can never be flushed over the saved one), and nothing is
+      // written by anyone but the admin who created this quick play.
       if (!latest.current.savable) return;
       if (!latest.current.dirty || snapshot === savedRef.current) return;
 
@@ -324,10 +324,7 @@ export function QuickPlaySyncProvider({
     <QuickPlaySyncContext.Provider
       value={{
         status,
-        // The updater form rather than the current `status`: the click that
-        // calls this also dispatches the wipe, and reading a status captured at
-        // render time would be a race with nothing to gain.
-        resolveConflict: () => setStatus(clearConflict),
+        createdBy,
         retryLoad: () => {
           if (status.kind !== "load-failed") return;
           setAttempt((n) => n + 1);

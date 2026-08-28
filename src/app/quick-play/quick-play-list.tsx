@@ -6,7 +6,7 @@ import { Button, ButtonLink } from "@/components/ui/button";
 import { CalloutPanel } from "@/components/ui/callout-panel";
 import { Card, CardKicker, CardTitle } from "@/components/ui/card";
 import { Tag } from "@/components/ui/tag";
-import { isAdmin } from "@/lib/auth/viewer";
+import { isAdmin, isOwner } from "@/lib/auth/viewer";
 import { useViewer } from "@/lib/auth/viewer-provider";
 import {
   QUICK_PLAY_LIST_COLUMNS,
@@ -63,7 +63,10 @@ function formatSavedAt(iso: string): string {
 }
 
 export function QuickPlayList() {
-  const admin = isAdmin(useViewer());
+  const viewer = useViewer();
+  /* Still the right question for the empty state and its "New quick play" CTA:
+     creating one is unchanged, and open to any admin. */
+  const admin = isAdmin(viewer);
   // `loading` first, so the server HTML and the first client render agree.
   const [state, setState] = useState<ListState>({ kind: "loading" });
   /** One armed id for the whole list, so only one card can be armed at a time. */
@@ -144,7 +147,7 @@ export function QuickPlayList() {
 
       if (count === 0) {
         setRemoveFailure(
-          `“${row.title}” wasn't deleted — either someone else deleted it first, or this account is no longer a club admin. Reload to see the current list.`,
+          `“${row.title}” wasn't deleted — either it's already been deleted, or this account is no longer a club admin. Reload to see the current list.`,
         );
         return;
       }
@@ -298,57 +301,69 @@ export function QuickPlayList() {
           gap: "22px",
         }}
       >
-        {state.rows.map((row) => (
-          <Card key={row.id} style={{ padding: "22px" }}>
-            <CardKicker>Last saved {formatSavedAt(row.updatedAt)}</CardKicker>
-            <CardTitle style={{ fontSize: "19px", margin: "4px 0 10px" }}>
-              {row.title}
-            </CardTitle>
-            <div
-              style={{
-                display: "flex",
-                gap: "6px",
-                flexWrap: "wrap",
-                marginBottom: "16px",
-              }}
-            >
-              <Tag tone="accent-2">{formatLabel(row.format)}</Tag>
-              <Tag tone="neutral">{row.teamCount} teams</Tag>
-              <Tag tone="neutral">
-                {row.playerCount} player{row.playerCount === 1 ? "" : "s"}
-              </Tag>
-            </div>
-            <ButtonLink href={`/quick-play/${row.id}`} variant="secondary" block>
-              Open
-            </ButtonLink>
-            {/* Hidden rather than disabled: a viewer has no path to deleting
-                anything, so a greyed-out Delete on every card is noise that
-                implies a permission they will never get.
+        {state.rows.map((row) => {
+          /* A plain const in the map callback — not a hook, so nothing here
+             needs memoising. */
+          const yours = isOwner(viewer, row.createdBy);
 
-                The same two-step confirm as the session page's wipe, kept
-                local: sharing it would mean rewriting `save-status.tsx`, and
-                deleting a quick play is a different enough promise to be worth
-                its own copy. */}
-            {admin ? (
-              <Button
-                variant="ghost"
-                block
-                onClick={() => {
-                  if (armedId !== row.id) {
-                    setArmedId(row.id);
-                    return;
-                  }
-                  setArmedId(null);
-                  void remove(row);
+          return (
+            <Card key={row.id} style={{ padding: "22px" }}>
+              <CardKicker>Last saved {formatSavedAt(row.updatedAt)}</CardKicker>
+              <CardTitle style={{ fontSize: "19px", margin: "4px 0 10px" }}>
+                {row.title}
+              </CardTitle>
+              <div
+                style={{
+                  display: "flex",
+                  gap: "6px",
+                  flexWrap: "wrap",
+                  marginBottom: "16px",
                 }}
               >
-                {armedId === row.id
-                  ? `Delete “${row.title}” — press again`
-                  : "Delete"}
-              </Button>
-            ) : null}
-          </Card>
-        ))}
+                {/* First, and only for the account that can see the Delete
+                    asymmetry at all — it answers "why can I delete that one and
+                    not this one" without putting a permission notice on every
+                    other card. */}
+                {yours ? <Tag tone="accent">Yours</Tag> : null}
+                <Tag tone="accent-2">{formatLabel(row.format)}</Tag>
+                <Tag tone="neutral">{row.teamCount} teams</Tag>
+                <Tag tone="neutral">
+                  {row.playerCount} player{row.playerCount === 1 ? "" : "s"}
+                </Tag>
+              </div>
+              <ButtonLink href={`/quick-play/${row.id}`} variant="secondary" block>
+                Open
+              </ButtonLink>
+              {/* Hidden rather than disabled, and now hidden on every quick play
+                  this account did not create: only the creating admin can delete
+                  one, so a Delete on somebody else's card would promise
+                  something the delete policy refuses by matching zero rows.
+
+                  The same two-step confirm as the session page's wipe, kept
+                  local: sharing it would mean rewriting `save-status.tsx`, and
+                  deleting a quick play is a different enough promise to be worth
+                  its own copy. */}
+              {yours ? (
+                <Button
+                  variant="ghost"
+                  block
+                  onClick={() => {
+                    if (armedId !== row.id) {
+                      setArmedId(row.id);
+                      return;
+                    }
+                    setArmedId(null);
+                    void remove(row);
+                  }}
+                >
+                  {armedId === row.id
+                    ? `Delete “${row.title}” — press again`
+                    : "Delete"}
+                </Button>
+              ) : null}
+            </Card>
+          );
+        })}
       </div>
     </>
   );

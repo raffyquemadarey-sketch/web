@@ -1,0 +1,117 @@
+/* The account menu's styling lives here rather than in the inline `style` the
+   rest of `site-header.tsx` uses, because two of the rules can't be expressed
+   inline: the rows need `:hover` / `:focus-visible`, and the panel needs a
+   `min()` width so it clamps to the viewport instead of the nav. */
+
+.wrapper {
+  position: relative;
+  display: inline-flex;
+}
+/* Never add `transform`, `filter` or `opacity` here. Any of them creates a
+   stacking context, which would trap `.panel` below page content no matter
+   what its z-index says. */
+
+/* `.btn`'s `--radius-md` is 16px, which on a 34px box leaves a couple of flat
+   pixels a side. The design's avatar is a circle, so this overrides it. */
+.trigger {
+  background: var(--color-accent-100);
+  color: var(--color-accent-700);
+  border: 1px solid var(--color-divider);
+  border-radius: 999px;
+  font-family: var(--font-heading);
+  font-weight: var(--font-heading-weight);
+  font-size: 12px;
+  letter-spacing: 0.02em;
+}
+.trigger:hover {
+  background: var(--color-accent-200);
+}
+
+/* 50 is arbitrary but unambiguous: the only other z-indexes in the app are the
+   1 and 3 inside `assignment-wheel.tsx`. `right: 0` anchors the panel to the
+   avatar at the nav's right edge, and the `min()` keeps it on screen at 375px,
+   where the nav's horizontal padding is 20px a side.
+
+   That `min()` bounds the panel's width, not its left edge: `right: 0` is
+   measured from the wrapper, so this only stays on screen while the avatar is
+   the last item in the nav and sits at its right edge. It does today, and the
+   note beside `NAV_LINKS` in `site-header.tsx` says so — but the nav wraps, and
+   an avatar pushed onto a second, left-aligned row would hang the panel's left
+   edge off the viewport. Move to viewport-relative positioning if that day
+   comes; don't build it for a hypothetical. */
+.panel {
+  position: absolute;
+  top: calc(100% + 8px);
+  right: 0;
+  width: min(264px, calc(100vw - 40px));
+  box-sizing: border-box;
+  padding: var(--space-2);
+  background: var(--color-neutral-100);
+  border: 1px solid var(--color-divider);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-lg);
+  z-index: 50;
+}
+
+.identity {
+  padding: var(--space-2) 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+/* These two are what retire the nav's old "an email is the one label that can
+   be arbitrarily long" constraint: inside a fixed-width panel a long address
+   wraps onto another line instead of widening anything. Both need
+   `overflow-wrap: anywhere`, the name included — it is the address's local-part,
+   and `.`, `_` and `+` are all UAX#14 class IS, which is not a break
+   opportunity, so `maria.fernanda.rodriguez.gonzalez` is one unbreakable word as
+   far as the line breaker is concerned. */
+.name {
+  font-family: var(--font-heading);
+  font-weight: var(--font-heading-weight);
+  font-size: 14px;
+  line-height: 1.2;
+  overflow-wrap: anywhere;
+}
+
+/* 65% rather than the 55% `figcaption` uses in `globals.css`: that ratio is
+   ~4.1:1 on this panel, under AA, and an address you may need to read character
+   by character to check which account you are in is not decoration. */
+.email {
+  font-size: 12px;
+  line-height: 1.35;
+  color: color-mix(in srgb, var(--color-text) 65%, transparent);
+  overflow-wrap: anywhere;
+}
+
+.divider {
+  height: 1px;
+  background: var(--color-divider);
+  margin: var(--space-2) 4px;
+}
+
+.item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  box-sizing: border-box;
+  padding: 8px 10px;
+  border: 0;
+  background: transparent;
+  border-radius: var(--radius-md);
+  font: inherit;
+  font-size: 14px;
+  line-height: 1.2;
+  text-align: left;
+  cursor: pointer;
+  color: var(--color-accent-700);
+}
+.item:hover,
+.item:focus-visible {
+  background: color-mix(in srgb, var(--color-accent) 10%, transparent);
+}
+.item:active {
+  background: color-mix(in srgb, var(--color-accent) 18%, transparent);
+}

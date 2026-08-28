@@ -14,7 +14,7 @@ import { ImportPlayersForm } from "@/components/forms/import-players-form";
 import { Button, ButtonLink } from "@/components/ui/button";
 import { PageContainer } from "@/components/ui/page-container";
 import { PageHeader } from "@/components/ui/page-header";
-import { isAdmin } from "@/lib/auth/viewer";
+import { isOwner } from "@/lib/auth/viewer";
 import { useViewer } from "@/lib/auth/viewer-provider";
 import {
   useDemoActions,
@@ -23,6 +23,7 @@ import {
 } from "@/lib/demo/demo-data-provider";
 import { QUICK_PLAY_ID } from "@/lib/demo/quick-play";
 import { useQuickPlaySync } from "@/lib/quick-play/sync-provider";
+import { isOpening } from "@/lib/quick-play/sync-status";
 import { buildBracketVM } from "@/lib/tournament/bracket";
 import { makePlayerEntry } from "@/lib/tournament/roster";
 
@@ -34,9 +35,10 @@ import { QuickPlaySaveStatus, QuickPlayViewerNote } from "./save-status";
  * navigation, and `QuickPlaySyncProvider` mirrors it to a Supabase row anyone
  * can read so it survives a reload too.
  *
- * Every mutating control renders only for an admin, and that is cosmetic — the
- * insert/update/delete policies on `quick_play_sessions` are what actually
- * refuse a non-admin, whether this component gets it right or not. Controls
+ * Every mutating control renders only for the admin who created this quick play,
+ * and that is cosmetic — the update and delete policies on
+ * `quick_play_sessions` are what actually refuse everyone else, whether this
+ * component gets it right or not. Controls
  * whose absence teaches a viewer nothing are hidden; the settings grid is shown
  * and disabled, because the session's shape is information a viewer came for.
  */
@@ -44,25 +46,21 @@ export function QuickPlaySession({ sessionId }: { sessionId: string }) {
   const session = useQuickPlay();
   const actions = useDemoActions();
   const openId = useQuickPlayId();
-  const { status, retryLoad } = useQuickPlaySync();
+  const { status, retryLoad, createdBy } = useQuickPlaySync();
   const viewer = useViewer();
-  const admin = isAdmin(viewer);
+  const canEdit = isOwner(viewer, createdBy);
   const id = QUICK_PLAY_ID;
 
-  // The store is still bound to another quick play (or to none): the sync
-  // provider rebinds it in its first effect. Rendering the whiteboard now would
-  // flash the previous session's players. This is also what the server renders,
-  // so there is no hydration mismatch to explain away. `reloading` joins it
-  // because a retry follows the panel below, and going panel → blank
-  // whiteboard → panel would show the fabricated sheet this screen exists to
-  // keep off the page. A first `loading` is not here: the whiteboard is live
-  // during it on purpose, which is how an admin can start a sheet while the
-  // read is still in flight — the case `conflict` protects.
-  if (
-    openId !== sessionId ||
-    status.kind === "starting" ||
-    status.kind === "reloading"
-  ) {
+  // Two things that both mean "there is no quick play to show yet". The store
+  // is still bound to another quick play (or to none), because the sync provider
+  // rebinds it in its first effect — rendering now would flash the previous
+  // session's players. And `isOpening` covers every status before the read
+  // resolves: the sheet in memory during those is a blank default that belongs
+  // to no session, and the account that owns this one is not known either, so
+  // neither the whiteboard nor a word about who may change it can be put on
+  // screen truthfully. `starting` is also what the server renders, so there is
+  // no hydration mismatch to explain away.
+  if (openId !== sessionId || isOpening(status)) {
     return (
       <PageContainer>
         <PageHeader
@@ -146,13 +144,13 @@ export function QuickPlaySession({ sessionId }: { sessionId: string }) {
       <PageHeader
         title={session.name}
         subtitle={
-          admin
+          canEdit
             ? "Add players, pick a format and draw a bracket. Every change saves itself to this quick play."
-            : "Players, teams and the bracket for this session, as the club's admin left them."
+            : "Players, teams and the bracket for this session, as the admin who created it left them."
         }
       />
 
-      {admin ? (
+      {canEdit ? (
         <QuickPlaySaveStatus />
       ) : (
         <QuickPlayViewerNote viewer={viewer} />
@@ -160,14 +158,14 @@ export function QuickPlaySession({ sessionId }: { sessionId: string }) {
 
       {/* Hidden, not disabled: a dead text field with a dead "Add player"
           button beside it is furniture that teaches a viewer nothing. */}
-      {admin ? (
+      {canEdit ? (
         <AddPlayerForm
           existingNames={session.roster.map((player) => player.name)}
           onAdd={(name) => actions.addRosterEntry(id, makePlayerEntry(name))}
         />
       ) : null}
 
-      {admin ? (
+      {canEdit ? (
         <ImportPlayersForm
           existingNames={session.roster.map((player) => player.name)}
           onImport={(names) => {
@@ -183,12 +181,12 @@ export function QuickPlaySession({ sessionId }: { sessionId: string }) {
         roster={session.roster}
         title="Players"
         emptyMessage={
-          admin
+          canEdit
             ? "No players yet — add the first one above."
             : "No players yet."
         }
         showSkill={false}
-        onRemove={admin ? (name) => actions.removeRosterEntry(id, name) : undefined}
+        onRemove={canEdit ? (name) => actions.removeRosterEntry(id, name) : undefined}
       />
 
       <TournamentSettings
@@ -205,7 +203,7 @@ export function QuickPlaySession({ sessionId }: { sessionId: string }) {
         onPlayTypeChange={(playType) => actions.setPlayType(id, playType)}
         onMatchMinutesChange={(minutes) => actions.setMatchMinutes(id, minutes)}
         onSessionMinutesChange={(minutes) => actions.setSessionMinutes(id, minutes)}
-        disabled={!admin}
+        disabled={!canEdit}
       />
 
       <RosterFitNotice
@@ -214,7 +212,7 @@ export function QuickPlaySession({ sessionId }: { sessionId: string }) {
         teamCount={session.teamCount}
         rosterVerb="been added"
         onUseSuggestion={
-          admin ? (teamCount) => actions.setTeamCount(id, teamCount) : undefined
+          canEdit ? (teamCount) => actions.setTeamCount(id, teamCount) : undefined
         }
       />
 
@@ -232,19 +230,19 @@ export function QuickPlaySession({ sessionId }: { sessionId: string }) {
         onShuffle={(pool) => actions.shuffleIntoTeams(id, pool)}
         onAssignPlayer={(name) => actions.assignPlayer(id, name)}
         onReset={() => actions.resetAssignments(id)}
-        readOnly={!admin}
+        readOnly={!canEdit}
       />
 
       <h3 style={{ fontSize: "18px", margin: "0 0 6px" }}>Bracket</h3>
       <p style={{ fontSize: "13px", opacity: 0.65, margin: "0 0 16px" }}>
-        {admin ? "Click a team to record the winner." : "Winners recorded so far."}
+        {canEdit ? "Click a team to record the winner." : "Winners recorded so far."}
       </p>
       {/* `MatchCard` already renders static rows when `onPick` is absent, so no
           bracket component needs to know about any of this. */}
       <BracketView
         vm={vm}
         onPick={
-          admin ? (key, side) => actions.setDecision(id, key, side) : undefined
+          canEdit ? (key, side) => actions.setDecision(id, key, side) : undefined
         }
       />
       {vm.kind === "elimination" ? <ChampionTag name={vm.championName} /> : null}

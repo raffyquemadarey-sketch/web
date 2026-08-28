@@ -7,6 +7,17 @@ export const metadata: Metadata = {
     "Sign up, get seeded, show up and smash. Browse club and open badminton tournaments and enter in a couple of minutes.",
 };
 
+/* The same decision as `NAV_LINKS` in `site-header.tsx`: /tournaments is still
+   being built, so the home page doesn't send anyone there either. That leaves the
+   hero with nothing to point at but Sign in, the only entry point that leads
+   anywhere real: Register isn't an option either, because it is hidden too — see
+   `SHOW_REGISTER_CTA` in `site-header.tsx`. The accent band goes with the flag
+   rather than standing there with no button, since it is entirely a
+   tournament-entry pitch and so has nothing left in it to link to. Flip this to
+   true and both come back as designed. The `: boolean` annotation is deliberate:
+   without it TS narrows to the literal and calls the other branch unreachable. */
+const SHOW_TOURNAMENT_CTAS: boolean = false;
+
 const FEATURES = [
   {
     title: "Brackets for every level",
@@ -77,60 +88,70 @@ export default function Home() {
             marginTop: "28px",
           }}
         >
-          <ButtonLink href="/tournaments" variant="primary" large>
-            Browse tournaments
-          </ButtonLink>
-          <ButtonLink href="/signin" variant="secondary" large>
-            I already have an account
-          </ButtonLink>
+          {SHOW_TOURNAMENT_CTAS ? (
+            <>
+              <ButtonLink href="/tournaments" variant="primary" large>
+                Browse tournaments
+              </ButtonLink>
+              <ButtonLink href="/signin" variant="secondary" large>
+                I already have an account
+              </ButtonLink>
+            </>
+          ) : (
+            <ButtonLink href="/signin" variant="primary" large>
+              Sign in
+            </ButtonLink>
+          )}
         </div>
       </section>
 
-      <section
-        style={{
-          maxWidth: "1200px",
-          margin: "0 auto",
-          padding: "0 clamp(20px, 5vw, 72px) clamp(28px, 5vw, 40px)",
-        }}
-      >
-        <div
+      {SHOW_TOURNAMENT_CTAS ? (
+        <section
           style={{
-            background: "var(--color-accent-2-100)",
-            borderRadius: "calc(var(--radius-lg) * 1.6)",
-            padding: "clamp(28px, 5vw, 48px) clamp(24px, 5vw, 56px)",
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "space-between",
-            gap: "24px",
-            flexWrap: "wrap",
+            maxWidth: "1200px",
+            margin: "0 auto",
+            padding: "0 clamp(20px, 5vw, 72px) clamp(28px, 5vw, 40px)",
           }}
         >
-          <div>
-            <h2 style={{ fontSize: "24px", margin: "0 0 6px" }}>
-              Entries close a week before each event
-            </h2>
-            <p
-              style={{
-                fontSize: "14.5px",
-                lineHeight: 1.6,
-                opacity: 0.78,
-                margin: 0,
-                maxWidth: "48ch",
-              }}
-            >
-              One account, every tournament this season.
-            </p>
-          </div>
-          <ButtonLink
-            href="/tournaments"
-            variant="primary"
-            large
-            style={{ flex: "none" }}
+          <div
+            style={{
+              background: "var(--color-accent-2-100)",
+              borderRadius: "calc(var(--radius-lg) * 1.6)",
+              padding: "clamp(28px, 5vw, 48px) clamp(24px, 5vw, 56px)",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "space-between",
+              gap: "24px",
+              flexWrap: "wrap",
+            }}
           >
-            Browse tournaments
-          </ButtonLink>
-        </div>
-      </section>
+            <div>
+              <h2 style={{ fontSize: "24px", margin: "0 0 6px" }}>
+                Entries close a week before each event
+              </h2>
+              <p
+                style={{
+                  fontSize: "14.5px",
+                  lineHeight: 1.6,
+                  opacity: 0.78,
+                  margin: 0,
+                  maxWidth: "48ch",
+                }}
+              >
+                One account, every tournament this season.
+              </p>
+            </div>
+            <ButtonLink
+              href="/tournaments"
+              variant="primary"
+              large
+              style={{ flex: "none" }}
+            >
+              Browse tournaments
+            </ButtonLink>
+          </div>
+        </section>
+      ) : null}
 
       <section
         style={{
